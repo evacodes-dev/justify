@@ -5,6 +5,11 @@ import FeedPage from './pages/FeedPage'
 import MarketPage from './pages/MarketPage'
 import TradePage from './pages/TradePage'
 import TradeFounderPage from './pages/TradeFounderPage'
+import LiveTradePage from './pages/LiveTradePage'
+import AgentsPage from './pages/AgentsPage'
+import AgentProfilePage from './pages/AgentProfilePage'
+import LeaderboardPage from './pages/LeaderboardPage'
+import DepositPage from './pages/DepositPage'
 import PortfolioPage from './pages/PortfolioPage'
 import ProfilePage from './pages/ProfilePage'
 import EditProfilePage from './pages/EditProfilePage'
@@ -23,6 +28,11 @@ export default function App() {
             <Route path="/market" element={<MarketPage />} />
             <Route path="/trade" element={<TradePage />} />
             <Route path="/trade-founder" element={<TradeFounderPage />} />
+            <Route path="/trade/m/:id" element={<LiveTradePage />} />
+            <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/agents/:name" element={<AgentProfilePage />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/deposit" element={<DepositPage />} />
             <Route path="/portfolio" element={<PortfolioPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/edit-profile" element={<EditProfilePage />} />

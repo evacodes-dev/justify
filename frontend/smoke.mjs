@@ -31,7 +31,7 @@ await page.click('ul.nav-pills button:has-text("People")')
 await page.waitForTimeout(300)
 await page.screenshot({ path: '/tmp/justify-shots/feed-people.png' })
 await page.click('text=Sign In +')
-await page.waitForTimeout(600)
+await page.waitForTimeout(1500) // Dynamic's auth modal loads async
 await page.screenshot({ path: '/tmp/justify-shots/signin-modal.png' })
 
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'NO CONSOLE/PAGE ERRORS')

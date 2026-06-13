@@ -1,22 +1,38 @@
 import Offcanvas from 'react-bootstrap/Offcanvas'
 import { Link } from 'react-router-dom'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import SidebarNav, { SidebarSecondaryNav } from './SidebarNav'
 import { useUi } from './UiContext'
 import { useWideLayout } from './wideLayout'
+import { useWallet } from '../../hooks/useWallet'
+import { useUsdcBalance } from '../../hooks/useUsdcBalance'
 
+const shortAddress = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`
+
+// Logged out: opens Dynamic's auth modal (Google / email / wallet).
+// Logged in: shows the connected address + live USDC balance on Arc; click
+// opens Dynamic's profile modal (account details + log out).
 function SignInButton() {
-  const { openModal } = useUi()
+  const { primaryWallet, setShowAuthFlow, setShowDynamicUserProfile } = useDynamicContext()
+  const { address } = useWallet()
+  const { balance } = useUsdcBalance(address)
+  const className = 'btn btn-primary w-100 text-decoration-none rounded-4 py-3 fw-bold text-uppercase m-0'
+
+  if (primaryWallet) {
+    return (
+      <button type="button" className={`${className} d-flex flex-column align-items-center gap-1`} onClick={() => setShowDynamicUserProfile(true)}>
+        <span>{shortAddress(primaryWallet.address)}</span>
+        <span className="badge bg-light-glass text-body fw-normal text-lowercase">
+          {balance == null ? '… USDC' : `$${balance.toFixed(2)} USDC · Arc`}
+        </span>
+      </button>
+    )
+  }
+
   return (
-    <a
-      href="#"
-      className="btn btn-primary w-100 text-decoration-none rounded-4 py-3 fw-bold text-uppercase m-0"
-      onClick={(e) => {
-        e.preventDefault()
-        openModal('sign')
-      }}
-    >
+    <button type="button" className={className} onClick={() => setShowAuthFlow(true)}>
       Sign In +
-    </a>
+    </button>
   )
 }
 

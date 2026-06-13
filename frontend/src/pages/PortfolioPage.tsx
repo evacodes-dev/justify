@@ -3,6 +3,7 @@ import RightSidebar from '../components/layout/RightSidebar'
 import FollowButton from '../components/common/FollowButton'
 import VerifiedBadge from '../components/common/VerifiedBadge'
 import PortfolioPostCard from '../components/portfolio/PortfolioPostCard'
+import ArcPositions from '../components/portfolio/ArcPositions'
 import { followerAvatars, followingAvatars, portfolioPosts } from '../data/portfolio'
 
 // Profile summary card at the top of the Portfolio page
@@ -75,6 +76,8 @@ export default function PortfolioPage() {
             <a href="#" className="text-decoration-none material-icons md-20 ms-auto text-muted">share</a>
           </div>
           <ProfileCard />
+          {/* Real on-chain positions for the connected wallet. */}
+          <ArcPositions />
           <div className="tab-content" id="pills-tabContent">
             <div className="tab-pane fade show active" id="pills-feed" role="tabpanel" aria-labelledby="pills-feed-tab">
               {/* Follow People */}
@@ -88,12 +91,6 @@ export default function PortfolioPage() {
               </div>
             </div>
           </div>
-        </div>
-        <div className="text-center mt-4">
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-          <p className="mb-0 mt-2">Loading</p>
         </div>
       </main>
       <RightSidebar />
