@@ -1,0 +1,42 @@
+# SECRETS — never commit (no inline comments: gitignore treats them as part of the pattern)
+ssh/
+SECRETS.handoff.txt
+signing-key*.json
+**/.env
+**/.env.*
+!**/.env.example
+**/blink-private.pem
+**/agents.json
+**/*.key
+**/wallets.json
+
+# deps / build
+node_modules/
+**/node_modules/
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+coverage/
+
+# Foundry (contracts)
+**/cache/
+**/broadcast/**/dry-run/
+forge-cache/
+
+# handoff artifacts (not part of the product)
+justify-handoff/
+justify-handoff.zip
+
+# runtime / logs / junk
+*.log
+**/*.log
+.DS_Store
+**/__MACOSX/
+Thumbs.db
+.vscode/
+.idea/
+
+# duplicate of docs/build-notes
+sandbox-artifacts/
