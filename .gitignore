@@ -44,3 +44,7 @@ sandbox-artifacts/
 # docs/notes hidden for now (WIP, kept local, untracked)
 *.md
 docs/
+
+# foundry artifacts
+contracts/out/
+contracts/broadcast/
