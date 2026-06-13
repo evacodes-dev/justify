@@ -6,8 +6,10 @@ export async function registerWriteRoutes(app: FastifyInstance) {
   const { agentRoutes } = await import("./agents.js");
   const { depositRoutes } = await import("./deposit.js");
   const { opsRoutes } = await import("./ops.js");
+  const { compatRoutes } = await import("./compat.js");
   await onboardRoutes(app);
   await agentRoutes(app);
   await depositRoutes(app);
   await opsRoutes(app);
+  await compatRoutes(app); // /api/* contract for the SPA front-end
 }

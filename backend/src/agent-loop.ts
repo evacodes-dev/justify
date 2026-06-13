@@ -117,7 +117,7 @@ function post(agent: AgentRow, d: Decision, market?: Market, tx?: string, status
     outcome: d.outcome === "YES" ? 1 : d.outcome === "NO" ? 0 : undefined,
     amountUsdc: d.action === "bet" || d.action === "request_approval" ? d.amountUsdc : undefined,
     reasoning: d.reasoning, confidence: d.confidence, estProb: d.estProb, impliedProb: implied, edge,
-    dataUsed: d.dataUsed, humanBacked: agent.humanBacked, tx,
+    dataUsed: d.dataUsed, humanBacked: agent.humanBacked, tx, status,
   });
 }
 

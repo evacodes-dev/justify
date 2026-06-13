@@ -6,15 +6,50 @@ import { backendSigner, publicClient, arc } from "../chain.js";
 import { erc20Abi } from "../abis.js";
 import { db } from "../store.js";
 
-const PRESETS: Record<string, string> = {
+export const PRESETS: Record<string, string> = {
   "Value Hunter": "Bet against extreme/unlikely outcomes where the crowd looks wrong. Demand a real edge vs the market price.",
   "News Sniper": "React to the latest data for THIS market's topic; take the side the data supports.",
   "Contrarian": "Take the underpriced side of the most lopsided market. Always look for a position, but only bet with edge.",
 };
 
-function humanIdOf(ownerAddress: string): string {
+export function humanIdOf(ownerAddress: string): string {
   const u = db.users.find((x) => x.address.toLowerCase() === ownerAddress.toLowerCase());
   return u?.humanId ?? ownerAddress.toLowerCase();
+}
+
+// Shared agent-creation (used by /agents and the /api/* compat layer).
+export async function createAgentInternal(input: {
+  name: string; preset?: string; strategyText?: string; budgetUsdc?: number; ownerAddress: string;
+}): Promise<{ ok: true; agent: any; fundTx: string } | { ok: false; code: number; error: string; quota?: boolean }> {
+  const name = String(input.name ?? "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 16);
+  const preset = input.preset ?? "Contrarian";
+  const budgetUsdc = Number(input.budgetUsdc ?? 1);
+  if (!name) return { ok: false, code: 400, error: "bad name" };
+  if (!/^0x[a-fA-F0-9]{40}$/.test(input.ownerAddress ?? "")) return { ok: false, code: 400, error: "bad ownerAddress" };
+  const owner = db.users.find((u) => u.address.toLowerCase() === input.ownerAddress.toLowerCase());
+  if (!owner?.verified) return { ok: false, code: 403, error: "owner must be verified (onboard first)" };
+  if (db.agents.find((a) => a.name === name)) return { ok: false, code: 409, error: "name taken" };
+
+  const hid = humanIdOf(input.ownerAddress);
+  const mine = db.agents.filter((a) => a.ownerHumanId === hid);
+  if (mine.length >= config.maxAgentsPerHuman)
+    return { ok: false, code: 429, error: `agent quota reached (${config.maxAgentsPerHuman} per human)`, quota: true };
+
+  const pk = generatePrivateKey();
+  const account = privateKeyToAccount(pk);
+  const fundUsdc = Math.min(budgetUsdc, 1) + 0.2;
+  const fundTx = await backendSigner().run(({ wallet, account: from }) =>
+    wallet.sendTransaction({ to: account.address, value: parseEther(String(fundUsdc)), account: from, chain: arc }),
+  );
+  await publicClient.waitForTransactionReceipt({ hash: fundTx });
+
+  const strategy = input.strategyText?.trim() || `${preset}: ${PRESETS[preset] ?? PRESETS["Contrarian"]}`;
+  const agent = db.agents.put({
+    id: account.address.slice(2, 10), name, ownerHumanId: hid, ownerAddress: input.ownerAddress.toLowerCase(),
+    address: account.address, pk, strategy, preset, budgetUsdc, spentUsdc: 0,
+    active: true, humanBacked: false, createdAt: Date.now(), wins: 0, losses: 0,
+  });
+  return { ok: true, agent, fundTx };
 }
 
 export async function agentRoutes(app: FastifyInstance) {
@@ -32,45 +67,9 @@ export async function agentRoutes(app: FastifyInstance) {
 
   // POST /agents { name, preset, strategyText?, budgetUsdc, ownerAddress }  (verified owner)
   app.post<{ Body: any }>("/agents", async (req, reply) => {
-    const { name: rawName, preset = "Contrarian", strategyText, budgetUsdc = 1, ownerAddress } = (req.body ?? {}) as any;
-    const name = String(rawName ?? "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 16);
-    if (!name) return reply.code(400).send({ error: "bad name" });
-    if (!/^0x[a-fA-F0-9]{40}$/.test(ownerAddress ?? "")) return reply.code(400).send({ error: "bad ownerAddress" });
-
-    const owner = db.users.find((u) => u.address.toLowerCase() === ownerAddress.toLowerCase());
-    if (!owner?.verified) return reply.code(403).send({ error: "owner must be verified (onboard first)" });
-    if (db.agents.find((a) => a.name === name)) return reply.code(409).send({ error: "name taken" });
-
-    // anti-sybil quota per HUMAN
-    const hid = humanIdOf(ownerAddress);
-    const mine = db.agents.filter((a) => a.ownerHumanId === hid);
-    if (mine.length >= config.maxAgentsPerHuman)
-      return reply.code(429).send({ error: `agent quota reached (${config.maxAgentsPerHuman} per human)`, quota: true });
-
-    // 1) generate agent wallet + fund gas + budget on Arc
-    const pk = generatePrivateKey();
-    const account = privateKeyToAccount(pk);
-    const fundUsdc = Math.min(Number(budgetUsdc), 1) + 0.2; // budget (capped for demo) + gas
-    try {
-      const tx = await backendSigner().run(({ wallet, account: from }) =>
-        wallet.sendTransaction({ to: account.address, value: parseEther(String(fundUsdc)), account: from, chain: arc }),
-      );
-      await publicClient.waitForTransactionReceipt({ hash: tx });
-    } catch (e) {
-      return reply.code(502).send({ error: "agent funding failed: " + (e as Error).message });
-    }
-
-    // 2) (AgentKit proof-of-human registration is gated on a real World App — see docs.
-    //     Anti-sybil is enforced above per humanId; humanBacked flips true once AgentKit reg lands.)
-    const strategy = strategyText?.trim() || `${preset}: ${PRESETS[preset] ?? PRESETS["Contrarian"]}`;
-
-    db.agents.put({
-      id: account.address.slice(2, 10), name, ownerHumanId: hid, ownerAddress: ownerAddress.toLowerCase(),
-      address: account.address, pk, strategy, preset, budgetUsdc: Number(budgetUsdc), spentUsdc: 0,
-      active: true, humanBacked: false, createdAt: Date.now(), wins: 0, losses: 0,
-    });
-
-    return { ok: true, agentName: name, walletAddr: account.address };
+    const r = await createAgentInternal((req.body ?? {}) as any);
+    if (!r.ok) return reply.code(r.code).send({ error: r.error, quota: (r as any).quota });
+    return { ok: true, agentName: r.agent.name, walletAddr: r.agent.address };
   });
 
   // pause / resume

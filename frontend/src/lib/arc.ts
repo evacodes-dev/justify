@@ -2,7 +2,6 @@ import { createPublicClient, defineChain, http, parseEther } from 'viem'
 import { ARC, USDC_ABI, MARKET_ABI } from './markets'
 
 // viem chain for Arc testnet (native USDC, 18-decimal native unit).
-// Ported from app/lib/arc.ts.
 export const arcChain = defineChain({
   id: ARC.chainId,
   name: 'Arc Testnet',
@@ -17,8 +16,8 @@ export const toUsdc = (human: number) => BigInt(Math.round(human * 1e6)) // 6-de
 export const fromUsdc = (raw: bigint) => Number(raw) / 1e6
 export const txUrl = (hash: string) => `${ARC.explorer}/tx/${hash}`
 
-// Live trade: approve USDC then bet, from a Dynamic embedded wallet, on Arc.
-// `walletClient` is a viem WalletClient obtained from primaryWallet.getWalletClient().
+// Live trade on the FPMM: approve USDC then buy, from a Dynamic embedded wallet.
+// `side` 0 = NO, 1 = YES (== the FPMM `outcome`). Name kept for component compatibility.
 export async function approveAndBet(
   walletClient: any,
   market: `0x${string}`,
@@ -28,7 +27,6 @@ export async function approveAndBet(
   const account = walletClient.account
   const amount = toUsdc(amountHuman)
 
-  // 1) approve (skip if allowance already enough)
   const allowance = (await arcPublic.readContract({
     address: ARC.usdc, abi: USDC_ABI, functionName: 'allowance', args: [account.address, market],
   })) as bigint
@@ -41,16 +39,14 @@ export async function approveAndBet(
     await arcPublic.waitForTransactionReceipt({ hash: approveHash as `0x${string}` })
   }
 
-  // 2) bet
   const betHash = await walletClient.writeContract({
-    address: market, abi: MARKET_ABI, functionName: 'bet', args: [side, amount],
+    address: market, abi: MARKET_ABI, functionName: 'buy', args: [side, amount],
     chain: arcChain, account,
   })
   await arcPublic.waitForTransactionReceipt({ hash: betHash as `0x${string}` })
   return { approveHash, betHash }
 }
 
-// USDC balance (ERC-20 6-dec view of the native balance) for any address.
 export async function usdcBalance(address: `0x${string}`): Promise<number> {
   const raw = (await arcPublic.readContract({ address: ARC.usdc, abi: USDC_ABI, functionName: 'balanceOf', args: [address] })) as bigint
   return fromUsdc(raw)
@@ -65,9 +61,10 @@ export async function sendUsdc(walletClient: any, to: `0x${string}`, amountHuman
   return hash
 }
 
+// Claim winnings on a resolved FPMM market (redeem winning shares 1:1).
 export async function claimMarket(walletClient: any, market: `0x${string}`): Promise<string> {
   const hash = await walletClient.writeContract({
-    address: market, abi: MARKET_ABI, functionName: 'claim', args: [],
+    address: market, abi: MARKET_ABI, functionName: 'redeem', args: [],
     chain: arcChain, account: walletClient.account,
   })
   await arcPublic.waitForTransactionReceipt({ hash: hash as `0x${string}` })
@@ -79,22 +76,32 @@ export type MarketState = Awaited<ReturnType<typeof readMarket>>
 export async function readPosition(market: `0x${string}`, user: `0x${string}`) {
   const base = await readMarket(market, user)
   const [outcome, payout] = await Promise.all([
-    arcPublic.readContract({ address: market, abi: MARKET_ABI, functionName: 'outcome' }).catch(() => 0) as Promise<number>,
+    arcPublic.readContract({ address: market, abi: MARKET_ABI, functionName: 'winningOutcome' }).catch(() => 0) as Promise<number>,
     arcPublic.readContract({ address: market, abi: MARKET_ABI, functionName: 'previewPayout', args: [user] }).catch(() => BigInt(0)) as Promise<bigint>,
   ])
   return { ...base, outcome, payout: fromUsdc(payout) }
 }
 
+// Live FPMM state for one market. `yesPct` comes from priceYes() (the AMM probability),
+// NOT a pool ratio. `stakeNo/stakeYes` are the user's outcome-share balances.
 export async function readMarket(market: `0x${string}`, user?: `0x${string}`) {
-  const [pools, resolved] = await Promise.all([
-    arcPublic.readContract({ address: market, abi: MARKET_ABI, functionName: 'pools' }) as Promise<readonly [bigint, bigint]>,
+  const [priceYesRaw, reserves, resolved] = await Promise.all([
+    arcPublic.readContract({ address: market, abi: MARKET_ABI, functionName: 'priceYes' }) as Promise<bigint>,
+    arcPublic.readContract({ address: market, abi: MARKET_ABI, functionName: 'reserves' }) as Promise<readonly [bigint, bigint]>,
     arcPublic.readContract({ address: market, abi: MARKET_ABI, functionName: 'resolved' }) as Promise<boolean>,
   ])
-  const ZERO = BigInt(0)
-  let stake: readonly [bigint, bigint] = [ZERO, ZERO]
-  if (user) stake = (await arcPublic.readContract({ address: market, abi: MARKET_ABI, functionName: 'stakeOf', args: [user] })) as readonly [bigint, bigint]
-  const [no, yes] = pools
-  const total = no + yes
-  const yesPct = total === ZERO ? 50 : Number((yes * BigInt(100)) / total)
-  return { no: fromUsdc(no), yes: fromUsdc(yes), total: fromUsdc(total), yesPct, resolved, stakeNo: fromUsdc(stake[0]), stakeYes: fromUsdc(stake[1]) }
+  let stakeNo = 0, stakeYes = 0
+  if (user) {
+    const [no, yes] = await Promise.all([
+      arcPublic.readContract({ address: market, abi: MARKET_ABI, functionName: 'balances', args: [user, 0] }) as Promise<bigint>,
+      arcPublic.readContract({ address: market, abi: MARKET_ABI, functionName: 'balances', args: [user, 1] }) as Promise<bigint>,
+    ])
+    stakeNo = fromUsdc(no); stakeYes = fromUsdc(yes)
+  }
+  const [reserveYes, reserveNo] = reserves
+  const yesPct = Math.round((Number(priceYesRaw) / 1e18) * 100)
+  return {
+    no: fromUsdc(reserveNo), yes: fromUsdc(reserveYes), total: fromUsdc(reserveYes + reserveNo),
+    yesPct, resolved, stakeNo, stakeYes,
+  }
 }
