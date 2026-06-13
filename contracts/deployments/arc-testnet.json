@@ -1,0 +1,20 @@
+{
+  "network": "arc-testnet",
+  "chainId": 5042002,
+  "rpc": "https://rpc.testnet.arc.network",
+  "explorer": "https://explorer.testnet.arc.network",
+  "deployBlock": 46943060,
+  "backend": "0x199D2956A804d48804a9482240D03Dab0495F578",
+  "contracts": {
+    "MarketFactory": "0xD32a1275698483aE883366E7a29aED9873416011",
+    "Resolver": "0xbE8D8549B776e9c287331d90F36C299C5a2E3c4f"
+  },
+  "collateral": {
+    "USDC": "0x3600000000000000000000000000000000000000",
+    "decimals": 6
+  },
+  "seedMarkets": [
+    { "id": 0, "address": "0xccc94f54f25ebfeE04AEeEdbFd4F1e39221526E6", "question": "Will ETH close above $5,000 on 2026-07-01?", "type": "price" },
+    { "id": 1, "address": "0x93773f04Bc513d9eeEE476953c1c83DB76610e62", "question": "Will the Fed cut rates at the July 2026 meeting?", "type": "subjective" }
+  ]
+}
