@@ -40,3 +40,7 @@ Thumbs.db
 
 # duplicate of docs/build-notes
 sandbox-artifacts/
+
+# docs/notes hidden for now (WIP, kept local, untracked)
+*.md
+docs/
