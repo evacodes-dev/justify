@@ -48,3 +48,6 @@ docs/
 # foundry artifacts
 contracts/out/
 contracts/broadcast/
+
+# backend runtime state
+backend/data/
