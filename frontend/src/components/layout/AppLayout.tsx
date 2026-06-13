@@ -3,10 +3,13 @@ import MobileHeader from './MobileHeader'
 import Sidebar from './Sidebar'
 import Footer from './Footer'
 import PostModal from '../modals/PostModal'
-import SignInModal from '../modals/SignInModal'
 import LanguageModal from '../modals/LanguageModal'
 import CommentModal from '../modals/CommentModal'
+import TradeModal from '../modals/TradeModal'
+import OnboardingModal from '../modals/OnboardingModal'
+import ApprovalsBanner from '../agents/ApprovalsBanner'
 import { useWideLayout } from './wideLayout'
+import { useAutoDotation } from '../../hooks/useAutoDotation'
 
 // Three-column shell shared by every page; pages render <main> + optional
 // right sidebar through the router outlet.
@@ -14,6 +17,8 @@ export default function AppLayout() {
   // Trade pages use the wider `container-fluid page-container` (80% fluid)
   // wrapper; every other page keeps the standard fixed-width `.container`.
   const wide = useWideLayout()
+  // Auto-fund a freshly-connected embedded wallet (best-effort, needs backend).
+  useAutoDotation()
   return (
     <>
       <MobileHeader />
@@ -27,9 +32,11 @@ export default function AppLayout() {
       </div>
       <Footer />
       <PostModal />
-      <SignInModal />
       <LanguageModal />
       <CommentModal />
+      <TradeModal />
+      <OnboardingModal />
+      <ApprovalsBanner />
     </>
   )
 }

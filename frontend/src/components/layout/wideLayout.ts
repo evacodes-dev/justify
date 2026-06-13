@@ -11,5 +11,6 @@ export const WIDE_LAYOUT_ROUTES = ['/trade', '/trade-founder']
 
 export function useWideLayout(): boolean {
   const { pathname } = useLocation()
-  return WIDE_LAYOUT_ROUTES.includes(pathname)
+  // Prefix match so the live trade route (/trade/m/:id) widens the shell too.
+  return WIDE_LAYOUT_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`))
 }

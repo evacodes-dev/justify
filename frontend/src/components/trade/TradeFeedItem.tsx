@@ -4,7 +4,7 @@ import type { TradeMarket } from '../../data/trade'
 import { useUi } from '../layout/UiContext'
 import CommentItem from '../feed/CommentItem'
 import MarketChart from './MarketChart'
-import TradeBox from './TradeBox'
+import TradeBox, { type LiveTrade } from './TradeBox'
 
 // Sets an inline style with !important priority (React's style prop drops
 // !important, but this relies on it to beat Bootstrap utilities).
@@ -45,7 +45,7 @@ function TradeFeedMenu() {
 
 // The trading-panel feed item shared by /trade and /trade-founder:
 // author header, market title, price chart, buy/sell box, action counters and comments.
-export default function TradeFeedItem({ market }: { market: TradeMarket }) {
+export default function TradeFeedItem({ market, live }: { market: TradeMarket; live?: LiveTrade }) {
   const { openModal } = useUi()
   const { author } = market
 
@@ -87,7 +87,7 @@ export default function TradeFeedItem({ market }: { market: TradeMarket }) {
                       <p className={market.metaClassName}>{market.meta}</p>
                     </div>
                     <MarketChart />
-                    <TradeBox yesOption={market.yesOption} noOption={market.noOption} />
+                    <TradeBox yesOption={market.yesOption} noOption={market.noOption} live={live} />
                   </div>
                   <div
                     className="d-flex align-items-center justify-content-between mb-2"

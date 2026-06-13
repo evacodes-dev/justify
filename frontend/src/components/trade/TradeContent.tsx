@@ -6,6 +6,7 @@ import PostCard from '../feed/PostCard'
 import { peopleYouCanFollow, popularPeople, newsChannels, politicians } from '../../data/accounts'
 import { trendingPosts } from '../../data/posts'
 import TradeFeedItem from './TradeFeedItem'
+import type { LiveTrade } from './TradeBox'
 
 // Page-specific CSS for the trade pages. Injected only while a trade page is
 // mounted so it doesn't leak into other routes.
@@ -249,7 +250,7 @@ function PeopleSection({ title, accounts }: { title: string; accounts: Account[]
 // Main column shared by TradePage and TradeFounderPage. Two extra tab panes
 // ("people" and "trending") exist but have no pills nav, so they stay hidden
 // (`tab-pane fade`).
-export default function TradeContent({ market }: { market: TradeMarket }) {
+export default function TradeContent({ market, live }: { market: TradeMarket; live?: LiveTrade }) {
   const { openModal } = useUi()
   return (
     <div className="main-content">
@@ -266,7 +267,7 @@ export default function TradeContent({ market }: { market: TradeMarket }) {
           {/* Feeds */}
           <div className="feeds">
             {/* Feed Item */}
-            <TradeFeedItem market={market} />
+            <TradeFeedItem market={market} live={live} />
             {/* Feed Item */}
           </div>
         </div>

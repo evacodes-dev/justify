@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import RightSidebar from '../components/layout/RightSidebar'
+import { DEMO_MARKETS } from '../lib/markets'
 
 interface ExploreItem {
   id: string
@@ -9,6 +10,17 @@ interface ExploreItem {
   image: string
   to?: string
 }
+
+// Real, tradeable markets on Arc — rendered through the SAME explore-list markup
+// (TZ Part 1: markets from contracts/backend), linking to the market detail page.
+const liveMarketItems: ExploreItem[] = DEMO_MARKETS.map((m) => ({
+  id: `live-${m.id}`,
+  author: `@${m.author ?? 'justify'}`,
+  title: m.question,
+  tags: m.tags ?? '',
+  image: m.thumb,
+  to: `/trade/m/${m.id}`,
+}))
 
 // The four unique explore entries; rendered REPEAT_COUNT times to fill the grid.
 const exploreItems: ExploreItem[] = [
@@ -93,6 +105,9 @@ export default function MarketPage() {
             <p className="ms-2 mb-0 fw-bold text-body fs-6">Explore</p>
           </div>
           <div className="bg-glass rounded-4 overflow-hidden shadow-sm mb-4 mb-lg-0">
+            {liveMarketItems.map((item) => (
+              <ExploreTrendingItem key={item.id} item={item} />
+            ))}
             {Array.from({ length: REPEAT_COUNT }).flatMap((_, repeat) =>
               exploreItems.map((item) => (
                 <ExploreTrendingItem key={`${repeat}-${item.id}`} item={item} />

@@ -1,6 +1,14 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
-export type ModalName = 'post' | 'sign' | 'language' | 'comment' | null
+export type ModalName = 'post' | 'language' | 'comment' | 'trade' | 'onboard' | null
+
+// Target for the trade modal: a real on-chain market + the chosen side.
+export interface TradeTarget {
+  address: `0x${string}`
+  question: string
+  side: 0 | 1
+  yesPct: number
+}
 
 interface UiContextValue {
   activeModal: ModalName
@@ -8,6 +16,8 @@ interface UiContextValue {
   closeModal: () => void
   offcanvasOpen: boolean
   setOffcanvasOpen: (open: boolean) => void
+  tradeTarget: TradeTarget | null
+  openTrade: (target: TradeTarget) => void
 }
 
 const UiContext = createContext<UiContextValue | undefined>(undefined)
@@ -15,6 +25,7 @@ const UiContext = createContext<UiContextValue | undefined>(undefined)
 export function UiProvider({ children }: { children: ReactNode }) {
   const [activeModal, setActiveModal] = useState<ModalName>(null)
   const [offcanvasOpen, setOffcanvasOpen] = useState(false)
+  const [tradeTarget, setTradeTarget] = useState<TradeTarget | null>(null)
   return (
     <UiContext.Provider
       value={{
@@ -23,6 +34,11 @@ export function UiProvider({ children }: { children: ReactNode }) {
         closeModal: () => setActiveModal(null),
         offcanvasOpen,
         setOffcanvasOpen,
+        tradeTarget,
+        openTrade: (target) => {
+          setTradeTarget(target)
+          setActiveModal('trade')
+        },
       }}
     >
       {children}

@@ -12,12 +12,14 @@ import {
   politicians,
 } from '../data/accounts'
 import { feedPosts, trendingPosts } from '../data/posts'
+import ReasoningFeed from '../components/feed/ReasoningFeed'
 import type { Account } from '../types'
 
-type Tab = 'feed' | 'people' | 'trending'
+type Tab = 'feed' | 'agents' | 'people' | 'trending'
 
 const tabs: { id: Tab; label: string }[] = [
   { id: 'feed', label: 'Feed' },
+  { id: 'agents', label: '🤖 Agents' },
   { id: 'people', label: 'People' },
   { id: 'trending', label: 'Trending' },
 ]
@@ -76,6 +78,11 @@ export default function FeedPage() {
                     ))}
                   </div>
                 </div>
+              </div>
+            )}
+            {activeTab === 'agents' && (
+              <div className="tab-pane fade show active" role="tabpanel">
+                <ReasoningFeed />
               </div>
             )}
             {activeTab === 'people' && (
