@@ -1,0 +1,9 @@
+✓ Workflow compiled
+2026-06-12T20:07:19Z [USER LOG] Market 1: resolvable — reading price feed...
+2026-06-12T20:07:19Z [USER LOG] ETH/USD price: $1670.99 (raw: 167099000000, decimals: 8)
+2026-06-12T20:07:19Z [USER LOG] DemoMarket #1 "ETH > $4000" -> outcome = NO (threshold $4000)
+2026-06-12T20:07:19Z [USER LOG] Market 1: warning — transaction succeeded but no tx hash returned
+2026-06-12T20:07:19Z [USER LOG] Market 1: resolved! Price: $1670.99, TX: 0x0000000000000000000000000000000000000000000000000000000000000000
+✓ Workflow Simulation Result:
+"Resolved markets: 1"
+2026-06-12T20:07:19Z [SIMULATION] Failed to cleanup beholder error=BeholderClient has not been started: cannot stop unstarted service

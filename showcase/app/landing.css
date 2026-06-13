@@ -1,0 +1,31 @@
+.lp { min-height:100vh; background:radial-gradient(1200px 600px at 50% -10%, #1a2440 0%, #0d1117 55%); color:#e6edf3; font-family:system-ui,sans-serif; }
+.lp-nav { display:flex; align-items:center; justify-content:space-between; padding:18px 32px; border-bottom:1px solid #21262d; }
+.lp-nav-right { display:flex; align-items:center; gap:18px; }
+.lp-link { color:#adbac7; text-decoration:none; font-weight:600; font-size:14px; }
+.lp-link:hover { color:#fff; }
+.dotm { color:#1f6feb; }
+
+.lp-hero { text-align:center; padding:80px 24px 60px; max-width:880px; margin:0 auto; }
+.lp-badge { display:inline-block; font-size:12px; font-weight:700; color:#3fb950; background:#23863622; border:1px solid #23863655; border-radius:20px; padding:5px 12px; }
+.lp-hero h1 { font-size:clamp(32px,5vw,56px); line-height:1.08; margin:22px 0 0; letter-spacing:-0.02em; font-weight:800; }
+.lp-sub { font-size:clamp(16px,2.2vw,22px); color:#adbac7; margin:18px auto 0; max-width:620px; }
+.lp-cta { display:flex; gap:12px; justify-content:center; margin-top:30px; flex-wrap:wrap; }
+.lp-btn { padding:13px 24px; font-size:16px; text-decoration:none; }
+.lp-chain { margin-top:34px; font-size:13px; }
+
+.lp-roles { max-width:1080px; margin:20px auto; padding:0 24px 30px; display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
+.lp-role { background:#161b22; border:1px solid #21262d; border-radius:16px; padding:22px; }
+.lp-role:hover { border-color:#1f6feb55; }
+.lp-role-emoji { font-size:30px; }
+.lp-role h3 { margin:12px 0 8px; font-size:18px; }
+.lp-role p { font-size:14px; line-height:1.5; }
+
+.lp-stack { max-width:1080px; margin:40px auto; padding:0 24px; text-align:center; }
+.lp-stack h2 { font-size:28px; margin:0 0 24px; }
+.lp-stack-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; text-align:left; }
+.lp-feat { background:#161b22; border:1px solid #21262d; border-radius:14px; padding:18px; display:flex; flex-direction:column; gap:8px; }
+.lp-feat b { font-size:15px; }
+.lp-feat span { font-size:13px; line-height:1.45; }
+
+.lp-foot { text-align:center; padding:60px 24px; border-top:1px solid #21262d; margin-top:40px; }
+.lp-foot blockquote { font-size:clamp(18px,2.4vw,26px); font-style:italic; color:#e6edf3; max-width:720px; margin:0 auto 18px; line-height:1.35; }
