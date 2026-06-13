@@ -11,6 +11,8 @@
   "dependencies": {
     "@dynamic-labs/ethereum": "^4.88.4",
     "@dynamic-labs/sdk-react-core": "^4.88.4",
+    "@worldcoin/idkit": "^4.1.8",
+    "@worldcoin/idkit-core": "^4.1.8",
     "react": "^18.3.1",
     "react-bootstrap": "^2.10.5",
     "react-dom": "^18.3.1",

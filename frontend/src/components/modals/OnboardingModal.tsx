@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import Modal from 'react-bootstrap/Modal'
+import { IDKitRequestWidget, orbLegacy, type RpContext } from '@worldcoin/idkit'
 import { useUi } from '../layout/UiContext'
 import { useWallet } from '../../hooks/useWallet'
 import { useToast } from '../common/Toast'
-import { verifyStatus } from '../../lib/api'
+import { verifyStatus, submitProof } from '../../lib/api'
 
-const WORLD_APP_ID = import.meta.env.VITE_WORLD_APP_ID
-const SIMULATOR_URL = 'https://simulator.worldcoin.org'
+const WORLD_APP_ID = import.meta.env.VITE_WORLD_APP_ID as `app_${string}`
+const WORLD_RP_ID = import.meta.env.VITE_WORLD_RP_ID as string
+const WORLD_ACTION = (import.meta.env.VITE_WORLD_ACTION as string) ?? 'create-market'
+const DEV_BYPASS = import.meta.env.VITE_DEV_BYPASS === 'true'
 
-// Onboarding stepper (TZ Part 2): 1) Verify human (World ID 4.0 — simulator on
-// dev), 2) Claim name (DB name, no ENS), 3) Ready. Same bg-brown-gradient style.
-// Verification status is the real backend gate (GET /api/verify-proof).
+// Onboarding stepper (TZ Part 2): 1) Verify human (real World ID 4.0 via IDKit —
+// simulator on dev), 2) Claim name (DB name, no ENS), 3) Ready. A dev-bypass button
+// is shown when VITE_DEV_BYPASS=true and the backend allows it (ALLOW_DEV_VERIFY).
 export default function OnboardingModal() {
   const { activeModal, closeModal } = useUi()
   const { address, isLoggedIn, promptLogin } = useWallet()
@@ -19,6 +22,8 @@ export default function OnboardingModal() {
   const [verified, setVerified] = useState(false)
   const [checking, setChecking] = useState(false)
   const [name, setName] = useState('')
+  const [rpContext, setRpContext] = useState<RpContext | null>(null)
+  const [widgetOpen, setWidgetOpen] = useState(false)
 
   const open = activeModal === 'onboard'
 
@@ -32,24 +37,44 @@ export default function OnboardingModal() {
     return v
   }, [address])
 
-  // On open, jump straight past step 1 if the wallet is already verified.
   useEffect(() => {
     if (open) checkVerified()
   }, [open, checkVerified])
 
-  // While waiting on World ID, poll the backend so we advance when it confirms.
-  useEffect(() => {
-    if (!open || verified || step !== 0) return
-    const t = setInterval(checkVerified, 4000)
-    return () => clearInterval(t)
-  }, [open, verified, step, checkVerified])
-
-  const startWorldId = () => {
+  // Real World ID 4.0: fetch the RP signature, then open the IDKit widget.
+  const startWorldId = async () => {
     if (!isLoggedIn) { promptLogin(); return }
-    // World ID 4.0: open the simulator (dev) to produce a proof; the backend
-    // records the verified wallet, and the poll above advances the stepper.
-    window.open(SIMULATOR_URL, '_blank', 'noopener')
-    toast.show('Complete World ID in the simulator — this updates automatically.', { kind: 'info', timeout: 8000 })
+    try {
+      const rp = await fetch('/api/rp-signature', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: WORLD_ACTION }),
+      }).then((r) => r.json())
+      setRpContext({ rp_id: WORLD_RP_ID, nonce: rp.nonce, created_at: rp.created_at, expires_at: rp.expires_at, signature: rp.sig })
+      setWidgetOpen(true)
+    } catch {
+      toast.show('Could not start World ID. Is the backend running?', { kind: 'error' })
+    }
+  }
+
+  // Dev bypass: mark verified without a proof (backend gated by ALLOW_DEV_VERIFY).
+  const devSkip = async () => {
+    if (!isLoggedIn) { promptLogin(); return }
+    setChecking(true)
+    try {
+      await submitProof({ walletAddress: address, idkitResponse: undefined as unknown })
+      await checkVerified()
+      toast.show('Verified (dev bypass).', { kind: 'info' })
+    } catch (e) {
+      toast.show((e as Error).message, { kind: 'error' })
+    } finally { setChecking(false) }
+  }
+
+  const saveName = async () => {
+    try {
+      await fetch('/api/verify-proof', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ walletAddress: address, name }),
+      })
+    } catch { /* name is best-effort */ }
+    setStep(2)
   }
 
   const stepDot = (i: number, label: string) => (
@@ -86,6 +111,11 @@ export default function OnboardingModal() {
           <button className="btn btn-primary rounded-5 w-100 py-3 fw-bold" onClick={startWorldId} disabled={checking}>
             {checking ? 'Checking…' : 'Verify with World ID'}
           </button>
+          {DEV_BYPASS && (
+            <button className="btn btn-link text-muted small mt-2" onClick={devSkip} disabled={checking}>
+              Dev: skip verification
+            </button>
+          )}
         </div>
       )}
 
@@ -106,7 +136,7 @@ export default function OnboardingModal() {
           <p className="small mb-3">
             {name ? <span className="text-success">“{name}” looks available ✓</span> : <span className="text-muted">Pick a handle</span>}
           </p>
-          <button className="btn btn-primary rounded-5 w-100 py-3 fw-bold" disabled={!name} onClick={() => setStep(2)}>
+          <button className="btn btn-primary rounded-5 w-100 py-3 fw-bold" disabled={!name} onClick={saveName}>
             Save name
           </button>
         </div>
@@ -119,6 +149,25 @@ export default function OnboardingModal() {
           <p className="text-muted small mb-3">You can now create markets and trade as a verified human.</p>
           <button className="btn btn-primary rounded-5 w-100 py-3 fw-bold" onClick={closeModal}>Done</button>
         </div>
+      )}
+
+      {rpContext && (
+        <IDKitRequestWidget
+          open={widgetOpen}
+          onOpenChange={setWidgetOpen}
+          app_id={WORLD_APP_ID}
+          action={WORLD_ACTION}
+          rp_context={rpContext}
+          allow_legacy_proofs={true}
+          environment="staging"
+          preset={orbLegacy({ signal: '' })}
+          handleVerify={async (result) => {
+            const res = await submitProof({ rp_id: WORLD_RP_ID, idkitResponse: result, walletAddress: address })
+            if (!res.success) throw new Error('Backend verification failed')
+            await checkVerified()
+          }}
+          onSuccess={() => { setWidgetOpen(false); toast.show('World ID verified ✓', { kind: 'success' }) }}
+        />
       )}
     </Modal>
   )

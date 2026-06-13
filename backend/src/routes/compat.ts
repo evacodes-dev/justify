@@ -4,6 +4,7 @@ import { config, fromUsdc, toUsdc, txUrl } from "../config.js";
 import { backendSigner, publicClient, arc } from "../chain.js";
 import { factoryAbi, erc20Abi } from "../abis.js";
 import { db, type AgentRow, type FeedItem, type Approval } from "../store.js";
+import { signRequest } from "@worldcoin/idkit-core/signing";
 import { createAgentInternal } from "./agents.js";
 import { tickAgent, executeBuy } from "../agent-loop.js";
 
@@ -63,6 +64,14 @@ export async function compatRoutes(app: FastifyInstance) {
     return { funded: true, hash, amount: 0.5, balance: bal + 0.5 };
   });
 
+  // World ID 4.0 RP signature for the IDKit widget (RP_SIGNING_KEY stays server-side)
+  app.post<{ Body: any }>("/api/rp-signature", async (req, reply) => {
+    const { action } = (req.body ?? {}) as any;
+    if (!process.env.RP_SIGNING_KEY) return reply.code(501).send({ error: "RP_SIGNING_KEY not set" });
+    const { sig, nonce, createdAt, expiresAt } = signRequest({ signingKeyHex: process.env.RP_SIGNING_KEY, action });
+    return { sig, nonce, created_at: createdAt, expires_at: expiresAt };
+  });
+
   // World ID gate: verify + (on success) dotation + registerCreator + mark verified
   app.get<{ Querystring: { address?: string } }>("/api/verify-proof", async (req) => {
     const addr = String(req.query.address ?? "").toLowerCase();
@@ -72,6 +81,9 @@ export async function compatRoutes(app: FastifyInstance) {
   app.post<{ Body: any }>("/api/verify-proof", async (req, reply) => {
     const { rp_id, idkitResponse, walletAddress, name } = (req.body ?? {}) as any;
     if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress ?? "")) return reply.code(400).send({ error: "bad walletAddress" });
+    // dev bypass (no proof) is allowed unless ALLOW_DEV_VERIFY=false — flip that env to require real World ID
+    if (!idkitResponse && process.env.ALLOW_DEV_VERIFY === "false")
+      return reply.code(400).send({ error: "World ID proof required (dev bypass disabled)" });
     let nullifier: string | undefined;
     if (idkitResponse && rp_id) {
       const portal = await fetch(`https://developer.world.org/api/v4/verify/${rp_id}`, {
@@ -80,11 +92,14 @@ export async function compatRoutes(app: FastifyInstance) {
       if (!portal.ok) return reply.code(400).send({ error: "World ID verification failed", portal: await portal.json().catch(() => ({})) });
       nullifier = (idkitResponse?.responses ?? []).map((r: any) => r?.nullifier).find(Boolean);
     }
-    // dotation + registerCreator (best-effort)
+    // dotation + registerCreator (best-effort, idempotent)
     let arcTx: string | undefined;
     try {
-      const fundTx = await backendSigner().run(({ wallet, account }) => wallet.sendTransaction({ to: walletAddress, value: parseEther("0.1"), account, chain: arc }));
-      await publicClient.waitForTransactionReceipt({ hash: fundTx });
+      const bal = fromUsdc((await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "balanceOf", args: [walletAddress] })) as bigint);
+      if (bal < 0.1) {
+        const fundTx = await backendSigner().run(({ wallet, account }) => wallet.sendTransaction({ to: walletAddress, value: parseEther("0.2"), account, chain: arc }));
+        await publicClient.waitForTransactionReceipt({ hash: fundTx });
+      }
       const already = await publicClient.readContract({ address: config.factory, abi: factoryAbi, functionName: "isCreator", args: [walletAddress] });
       if (!already) {
         arcTx = await backendSigner().run(({ wallet, account }) => wallet.writeContract({ address: config.factory, abi: factoryAbi, functionName: "registerCreator", args: [walletAddress], account, chain: arc }));
