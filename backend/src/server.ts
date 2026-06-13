@@ -3,6 +3,8 @@ import cors from "@fastify/cors";
 import { config } from "./config.js";
 import { db } from "./store.js";
 import { startIndexer } from "./indexer.js";
+import { tickAllAgents } from "./agent-loop.js";
+import { resolveDueMarkets } from "./resolution.js";
 import { registerWriteRoutes } from "./routes/index.js";
 
 const app = Fastify({ logger: true });
@@ -68,4 +70,9 @@ const port = config.port;
 app.listen({ port, host: "0.0.0.0" }).then(() => {
   app.log.info(`Justify backend on :${port} (Arc ${config.chainId})`);
   startIndexer();
+  // agent loop + auto-resolution crons (env AGENT_LOOP=off to disable)
+  if (process.env.AGENT_LOOP !== "off") {
+    setInterval(() => tickAllAgents().catch((e) => app.log.error("[agents] " + e.message)), 120_000);
+    setInterval(() => resolveDueMarkets().catch((e) => app.log.error("[resolve] " + e.message)), 120_000);
+  }
 });
