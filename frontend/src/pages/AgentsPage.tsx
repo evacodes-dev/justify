@@ -8,7 +8,7 @@ import { listAgents, createAgent, type PublicAgent } from '../lib/api'
 const PRESETS = ['Value Hunter', 'News Sniper', 'Contrarian']
 const MAX_AGENTS = 3 // anti-sybil cap per person (TZ killer criterion)
 
-function AgentCard({ agent }: { agent: PublicAgent }) {
+function AgentCard({ agent, isOwner }: { agent: PublicAgent; isOwner: boolean }) {
   const [active, setActive] = useState(true)
   const rec = agent.record ?? { w: 0, l: 0 }
   const total = rec.w + rec.l
@@ -21,9 +21,15 @@ function AgentCard({ agent }: { agent: PublicAgent }) {
           {agent.name}
         </Link>
         <span className="badge bg-success me-2" title="proof-of-human (AgentKit)">human-backed ✓</span>
-        <div className="form-check form-switch m-0">
-          <input className="form-check-input" type="checkbox" role="switch" checked={active} onChange={(e) => setActive(e.target.checked)} />
-        </div>
+        {isOwner ? (
+          <div className="form-check form-switch m-0" title="Pause / resume your agent">
+            <input className="form-check-input" type="checkbox" role="switch" checked={active} onChange={(e) => setActive(e.target.checked)} />
+          </div>
+        ) : (
+          <div className="form-check form-switch m-0" title="You can only manage your own agents">
+            <input className="form-check-input" type="checkbox" role="switch" checked disabled readOnly />
+          </div>
+        )}
       </div>
       <div className="d-flex justify-content-between text-muted small">
         <span>{agent.preset}</span>
@@ -151,7 +157,13 @@ export default function AgentsPage() {
           ) : agents.length === 0 ? (
             <div className="bg-glass rounded-4 p-4 text-center text-muted">No agents yet — create the first one.</div>
           ) : (
-            agents.map((a) => <AgentCard key={a.id} agent={a} />)
+            agents.map((a) => (
+              <AgentCard
+                key={a.id}
+                agent={a}
+                isOwner={!!address && a.owner?.toLowerCase() === address.toLowerCase()}
+              />
+            ))
           )}
         </div>
       </main>
