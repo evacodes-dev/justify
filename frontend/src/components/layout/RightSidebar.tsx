@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
-import { marketMovers } from '../../data/trending'
-import { whoToFollow } from '../../data/accounts'
 import VerifiedBadge from '../common/VerifiedBadge'
 import FollowButton from '../common/FollowButton'
 import { useWideLayout } from './wideLayout'
+import { useMarkets } from '../../hooks/useMarkets'
+import { useCreators } from '../../hooks/useCreators'
 import type { ReactNode } from 'react'
 
 function SearchBox() {
@@ -16,27 +16,30 @@ function SearchBox() {
 }
 
 function MarketMovers() {
+  const { markets } = useMarkets()
+  const top = [...markets].sort((a, b) => b.api.volume - a.api.volume).slice(0, 4)
+  if (!top.length) return null
   return (
     <div className="bg-glass rounded-4 overflow-hidden shadow-sm mb-4">
       <h6 className="fw-bold text-body p-3 mb-0 border-bottom">Market Movers</h6>
-      {marketMovers.map((item) => (
+      {top.map(({ demo, api }) => (
         <Link
-          key={item.id}
-          to="/market"
+          key={demo.id}
+          to={`/trade/m/${demo.id}`}
           className="p-3 border-bottom d-flex align-items-center text-dark text-decoration-none trending-item"
         >
           <div>
             <div className="text-muted fw-light d-flex align-items-center">
-              <small>{item.author}</small>
+              <small>@{demo.author ?? 'justify'}</small>
               <span className="mx-1 material-icons md-3">circle</span>
-              <small>Live</small>
+              <small>{api.resolved ? 'Resolved' : 'Live'}</small>
             </div>
-            <p className="fw-bold text-white mb-0 pe-3">{item.title}</p>
-            <small className="text-muted">Trending with</small>
+            <p className="fw-bold text-white mb-0 pe-3">{demo.question}</p>
+            <small className="text-muted">{Math.round(api.priceYes * 100)}% YES · ${api.volume.toFixed(2)} Vol</small>
             <br />
-            <span className="text-primary">{item.tags}</span>
+            <span className="text-primary">{demo.tags}</span>
           </div>
-          <img src={item.image} className="img-fluid rounded-4 ms-auto" alt="profile-img" />
+          <img src={demo.thumb} className="img-fluid rounded-4 ms-auto" alt="market" style={{ maxWidth: 80 }} />
         </Link>
       ))}
       <Link to="/market" className="text-decoration-none text-primary">
@@ -47,33 +50,28 @@ function MarketMovers() {
 }
 
 function WhoToFollow() {
+  const creators = useCreators()
+  if (!creators.length) return null
+  const shown = creators.slice(0, 5)
   return (
     <div className="bg-glass rounded-4 overflow-hidden shadow-sm account-follow mb-4">
       <h6 className="fw-bold text-body p-3 mb-0 border-bottom">Who to follow</h6>
-      {whoToFollow.map((account, i) => (
+      {shown.map((account, i) => (
         <div
           key={account.id}
-          className={`p-3 d-flex text-dark text-decoration-none account-item${i < whoToFollow.length - 1 ? ' border-bottom' : ''}`}
+          className={`p-3 d-flex text-dark text-decoration-none account-item${i < shown.length - 1 ? ' border-bottom' : ''}`}
         >
           <Link to="/profile">
             <img src={account.avatar} className="img-fluid rounded-circle me-3" alt="profile-img" />
           </Link>
           <div>
             <p className="fw-bold mb-0 pe-3 d-flex align-items-center">
-              <Link className="text-decoration-none text-white" to="/profile">
-                {account.name}
-              </Link>
+              <Link className="text-decoration-none text-white" to="/profile">{account.name}</Link>
               {account.verified && <VerifiedBadge />}
             </p>
             <div className="text-muted fw-light">
               <p className="mb-1 small">{account.handle}</p>
-              {account.promoted ? (
-                <span className="text-muted d-flex align-items-center small">
-                  <span className="material-icons me-1 small">open_in_new</span>Promoted
-                </span>
-              ) : (
-                <span className="text-muted d-flex align-items-center small">{account.bio}</span>
-              )}
+              <span className="text-muted d-flex align-items-center small">{account.bio || 'verified human'}</span>
             </div>
           </div>
           <div className="ms-auto">
@@ -91,7 +89,6 @@ interface RightSidebarProps {
 
 // Right column: search + Market Movers + Who to follow (default), or custom page content
 export default function RightSidebar({ children }: RightSidebarProps) {
-  // Trade pages narrow this column to col-xxl-2 to match the col-xxl-8 main.
   const wide = useWideLayout()
   return (
     <aside

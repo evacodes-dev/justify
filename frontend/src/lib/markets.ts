@@ -61,7 +61,7 @@ export const getMarketByAddress = (address: string) =>
 // ─── dynamic markets from the backend (real FPMM markets, incl. user-created) ───
 export type ApiMarket = {
   id: number; address: `0x${string}`; question: string; metadataURI: string;
-  priceYes: number; volume: number; resolved: boolean; outcome?: number; closeTime: number; creator: string
+  priceYes: number; volume: number; resolved: boolean; outcome?: number; closeTime: number; creator: string; creatorName?: string
 }
 
 // Derive a card emoji/thumb/tags from the question + metadata category.
@@ -79,7 +79,7 @@ function derive(question: string, category: string): Pick<DemoMarket, 'emoji' | 
 export function apiMarketToDemo(m: ApiMarket): DemoMarket {
   let category = 'general'
   try { category = JSON.parse(m.metadataURI || '{}').category || 'general' } catch { /* legacy uri */ }
-  return { id: m.id, address: m.address, question: m.question, author: 'justify', ...derive(m.question, category) }
+  return { id: m.id, address: m.address, question: m.question, author: m.creatorName || 'justify', ...derive(m.question, category) }
 }
 
 export async function fetchMarkets(): Promise<{ demo: DemoMarket; api: ApiMarket }[]> {

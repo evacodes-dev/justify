@@ -3,7 +3,7 @@ import { parseEther } from "viem";
 import { config, fromUsdc, toUsdc, txUrl } from "../config.js";
 import { backendSigner, publicClient, arc } from "../chain.js";
 import { factoryAbi, erc20Abi } from "../abis.js";
-import { db, type AgentRow, type FeedItem, type Approval } from "../store.js";
+import { db, kv, type AgentRow, type FeedItem, type Approval } from "../store.js";
 import { signRequest } from "@worldcoin/idkit-core/signing";
 import { createAgentInternal } from "./agents.js";
 import { tickAgent, executeBuy } from "../agent-loop.js";
@@ -43,11 +43,20 @@ function toApproval(a: Approval) {
 }
 
 export async function compatRoutes(app: FastifyInstance) {
+  // real form-submitter per market (on-chain creator is always the backend signer)
+  const submitters = (): Record<string, string> => kv.get("submitters", {});
+  const creatorNameOf = (id: number, chainCreator: string): string => {
+    const addr = submitters()[String(id)] ?? chainCreator;
+    const u = db.users.find((x) => x.address.toLowerCase() === addr.toLowerCase());
+    return u?.name ?? "justify";
+  };
+
   // markets for the on-chain layer (FPMM addresses + live price)
   app.get("/api/markets", async () => ({
     markets: db.markets.all().sort((a, b) => b.createdAt - a.createdAt).map((m) => ({
       id: m.id, address: m.address, question: m.question, metadataURI: m.metadataURI,
-      priceYes: m.priceYes, volume: m.volume, resolved: m.resolved, outcome: m.outcome, closeTime: m.closeTime, creator: m.creator,
+      priceYes: m.priceYes, volume: m.volume, resolved: m.resolved, outcome: m.outcome, closeTime: m.closeTime,
+      creator: m.creator, creatorName: creatorNameOf(m.id, m.creator),
     })),
   }));
 
@@ -124,7 +133,7 @@ export async function compatRoutes(app: FastifyInstance) {
       creators: users.map((u) => ({
         id: u.address.toLowerCase(), name: u.name, handle: "@" + u.name, address: u.address,
         avatar: u.avatar || "/img/images.jpeg", bio: u.bio || "", verified: u.verified,
-        markets: db.markets.filter((m) => m.creator.toLowerCase() === u.address.toLowerCase()).length,
+        markets: Object.values(submitters()).filter((a) => a.toLowerCase() === u.address.toLowerCase()).length,
       })),
     };
   });
@@ -149,9 +158,9 @@ export async function compatRoutes(app: FastifyInstance) {
 
   // create a market (backend is a registered creator; funds the initial liquidity)
   app.post<{ Body: any }>("/api/create-market", async (req, reply) => {
-    const { question, description, category, image, closeTimeDays } = (req.body ?? {}) as any;
+    const { question, description, category, image, closeTimeDays, creator } = (req.body ?? {}) as any;
     if (!question || String(question).length < 6) return reply.code(400).send({ error: "question too short" });
-    const L = toUsdc(2);
+    const L = toUsdc(0.5); // small initial liquidity to stretch the faucet
     const days = Math.max(1, Math.min(365, Number(closeTimeDays) || 14));
     const closeTime = BigInt(Math.floor(Date.now() / 1000) + days * 86400);
     const metadataURI = JSON.stringify({ category: category || "general", description: description || "", image: image || "" });
@@ -168,6 +177,7 @@ export async function compatRoutes(app: FastifyInstance) {
       const count = (await publicClient.readContract({ address: config.factory, abi: factoryAbi, functionName: "marketCount" })) as bigint;
       const id = Number(count) - 1;
       const address = (await publicClient.readContract({ address: config.factory, abi: factoryAbi, functionName: "markets", args: [BigInt(id)] })) as string;
+      if (/^0x[a-fA-F0-9]{40}$/.test(creator ?? "")) { const s = submitters(); s[String(id)] = String(creator).toLowerCase(); kv.set("submitters", s); }
       return { address, question, id, explorer: config.explorer, deployTx };
     } catch (e) {
       return reply.code(502).send({ error: "create failed: " + (e as Error).message });
