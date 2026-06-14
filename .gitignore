@@ -51,3 +51,6 @@ contracts/broadcast/
 
 # backend runtime state
 backend/data/
+
+# blink sandbox key
+**/blink-sandbox-private.pem
