@@ -181,11 +181,22 @@ export async function compatRoutes(app: FastifyInstance) {
       id: walletAddress.toLowerCase(), address: walletAddress,
       name: (name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : "") || existing?.name || walletAddress.slice(0, 8).toLowerCase(),
       verified: true, humanId: nullifier ?? existing?.humanId ?? walletAddress.toLowerCase(),
-      country: (country ? String(country).slice(0, 3).toUpperCase() : existing?.country),
+      country: (country ? normCountry(country) : existing?.country),
       createdAt: existing?.createdAt ?? Date.now(), arcTx,
     });
     return { success: true, alreadyVerified: !!existing?.verified };
   });
+
+  // Country codes may arrive as ISO alpha-2 (UI dropdown: "US") or alpha-3 ("USA").
+  // Canonicalize everything to alpha-2 so the gate matches regardless of source.
+  const ALPHA3: Record<string, string> = {
+    USA: "US", GBR: "GB", DEU: "DE", FRA: "FR", ITA: "IT", ESP: "ES",
+    UKR: "UA", RUS: "RU", IND: "IN", BRA: "BR", CHN: "CN", JPN: "JP",
+  };
+  const normCountry = (c?: string | null): string => {
+    const s = String(c ?? "").toUpperCase();
+    return ALPHA3[s] ?? s.slice(0, 2);
+  };
 
   // parse a market's flexible metadata (countries + restriction)
   const marketMeta = (m: { metadataURI?: string }): { restricted: boolean; countries: string[] } => {
@@ -201,7 +212,8 @@ export async function compatRoutes(app: FastifyInstance) {
     if (!meta.restricted || meta.countries.length === 0) return { allowed: true, restricted: false };
     const u = db.users.find((x) => x.address.toLowerCase() === String(req.query.address ?? "").toLowerCase());
     const country = u?.country;
-    const allowed = !!country && meta.countries.includes(country);
+    const userNorm = normCountry(country);
+    const allowed = !!country && meta.countries.map(normCountry).includes(userNorm);
     return { allowed, restricted: true, countries: meta.countries, userCountry: country ?? null, reason: allowed ? "" : (country ? `Restricted market — your country (${country}) is not eligible.` : "Set your country in Settings to bet on country-restricted markets.") };
   });
 
@@ -254,7 +266,7 @@ export async function compatRoutes(app: FastifyInstance) {
     if (!u) return reply.code(404).send({ error: "user not found (verify first)" });
     const cleanName = name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : u.name;
     if (cleanName !== u.name && db.users.find((x) => x.name === cleanName)) return reply.code(409).send({ error: "name taken" });
-    db.users.patch(u.id, { name: cleanName, avatar: avatar ?? u.avatar, bio: bio ?? u.bio, country: country ? String(country).slice(0, 3).toUpperCase() : u.country });
+    db.users.patch(u.id, { name: cleanName, avatar: avatar ?? u.avatar, bio: bio ?? u.bio, country: country ? normCountry(country) : u.country });
     return { ok: true, user: db.users.get(u.id) };
   });
 
@@ -266,7 +278,7 @@ export async function compatRoutes(app: FastifyInstance) {
     const days = Math.max(1, Math.min(365, Number(closeTimeDays) || 14));
     const closeTime = BigInt(Math.floor(Date.now() / 1000) + days * 86400);
     // country tags (e.g. ["US","GB"]) + restriction ride in the flexible metadata JSON — no schema change
-    const countryTags = Array.isArray(countries) ? countries.map((c: any) => String(c).slice(0, 3).toUpperCase()).filter(Boolean).slice(0, 12) : [];
+    const countryTags = Array.isArray(countries) ? countries.map((c: any) => normCountry(c)).filter(Boolean).slice(0, 12) : [];
     const isRestricted = !!restricted && countryTags.length > 0;
     const metadataURI = JSON.stringify({ category: category || "general", description: description || "", image: image || "", countries: countryTags, restricted: isRestricted });
     try {
