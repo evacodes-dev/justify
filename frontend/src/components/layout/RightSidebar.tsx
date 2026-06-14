@@ -61,20 +61,20 @@ function WhoToFollow() {
           key={account.id}
           className={`p-3 d-flex text-dark text-decoration-none account-item${i < shown.length - 1 ? ' border-bottom' : ''}`}
         >
-          <Link to={`/u/${account.name}`}>
+          <Link to={`/u/${account.name}`} className="flex-shrink-0">
             <img src={account.avatar} className="img-fluid rounded-circle me-3" alt="profile-img" />
           </Link>
-          <div>
-            <p className="fw-bold mb-0 pe-3 d-flex align-items-center">
-              <Link className="text-decoration-none text-white" to={`/u/${account.name}`}>{account.name}</Link>
+          <div className="flex-grow-1" style={{ minWidth: 0 }}>
+            <p className="fw-bold mb-0 pe-2 d-flex align-items-center text-truncate">
+              <Link className="text-decoration-none text-white text-truncate" to={`/u/${account.name}`}>{account.name}</Link>
               {account.verified && <VerifiedBadge />}
             </p>
             <div className="text-muted fw-light">
-              <p className="mb-1 small">{account.handle}</p>
-              <span className="text-muted d-flex align-items-center small">{account.bio || 'verified human'}</span>
+              <p className="mb-1 small text-truncate">{account.handle}</p>
+              <span className="text-muted d-flex align-items-center small text-truncate">{account.bio || 'verified human'}</span>
             </div>
           </div>
-          <div className="ms-auto">
+          <div className="ms-auto ps-2 flex-shrink-0">
             <FollowButton />
           </div>
         </div>
