@@ -14,11 +14,15 @@ import { tickAgent, executeBuy } from "../agent-loop.js";
 
 const sideOf = (o?: number) => (o === 1 ? "YES" : o === 0 ? "NO" : undefined);
 
+// a bot is world-visible unless explicitly a draft (public === false)
+const isPublicAgent = (a: AgentRow) => a.public !== false;
+
 function toPublicAgent(a: AgentRow) {
   return {
     id: a.id, name: a.name, address: a.address, strategy: a.strategy, preset: a.preset,
     owner: a.ownerAddress, humanId: a.ownerHumanId, humanBacked: a.humanBacked,
     record: { w: a.wins, l: a.losses }, budgetUsdc: a.budgetUsdc, spentUsdc: a.spentUsdc, active: a.active,
+    public: isPublicAgent(a),
   };
 }
 
@@ -172,12 +176,14 @@ export async function compatRoutes(app: FastifyInstance) {
 
   // create a market (backend is a registered creator; funds the initial liquidity)
   app.post<{ Body: any }>("/api/create-market", async (req, reply) => {
-    const { question, description, category, image, closeTimeDays, creator } = (req.body ?? {}) as any;
+    const { question, description, category, image, closeTimeDays, creator, countries } = (req.body ?? {}) as any;
     if (!question || String(question).length < 6) return reply.code(400).send({ error: "question too short" });
     const L = toUsdc(0.5); // small initial liquidity to stretch the faucet
     const days = Math.max(1, Math.min(365, Number(closeTimeDays) || 14));
     const closeTime = BigInt(Math.floor(Date.now() / 1000) + days * 86400);
-    const metadataURI = JSON.stringify({ category: category || "general", description: description || "", image: image || "" });
+    // country tags (e.g. ["US","GB"]) ride in the flexible metadata JSON — no schema change
+    const countryTags = Array.isArray(countries) ? countries.map((c: any) => String(c).slice(0, 3).toUpperCase()).filter(Boolean).slice(0, 12) : [];
+    const metadataURI = JSON.stringify({ category: category || "general", description: description || "", image: image || "", countries: countryTags });
     try {
       const deployTx = await backendSigner().run(async ({ wallet, account }) => {
         const allowance = (await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, config.factory] })) as bigint;
@@ -198,8 +204,12 @@ export async function compatRoutes(app: FastifyInstance) {
     }
   });
 
-  // agents
-  app.get("/api/agents", async () => ({ agents: db.agents.all().map(toPublicAgent) }));
+  // agents — public bots for everyone, plus the caller's own drafts (so they can publish)
+  app.get<{ Querystring: { owner?: string } }>("/api/agents", async (req) => {
+    const owner = String(req.query.owner ?? "").toLowerCase();
+    const visible = db.agents.all().filter((a) => isPublicAgent(a) || (owner && a.ownerAddress.toLowerCase() === owner));
+    return { agents: visible.map(toPublicAgent) };
+  });
   app.post<{ Body: any }>("/api/agents", async (req, reply) => {
     const body = (req.body ?? {}) as any;
     const r = await createAgentInternal({ name: body.name, preset: body.preset, ownerAddress: body.owner, budgetUsdc: body.budgetUsdc });
@@ -207,12 +217,33 @@ export async function compatRoutes(app: FastifyInstance) {
     return { agent: toPublicAgent(r.agent), fundTx: r.fundTx };
   });
 
+  // publish a draft bot — gated by a World ID confirmation (same portal verify as
+  // onboarding/approvals). Dev bypass allowed unless ALLOW_DEV_VERIFY=false.
+  app.post<{ Params: { id: string }; Body: any }>("/api/agents/:id/publish", async (req, reply) => {
+    const { owner, idkitResponse, rp_id } = (req.body ?? {}) as any;
+    const agent = db.agents.get(req.params.id);
+    if (!agent) return reply.code(404).send({ error: "agent not found" });
+    if (!/^0x[a-fA-F0-9]{40}$/.test(owner ?? "") || agent.ownerAddress.toLowerCase() !== String(owner).toLowerCase())
+      return reply.code(403).send({ error: "only the owner can publish this agent" });
+    if (isPublicAgent(agent)) return { agent: toPublicAgent(agent), alreadyPublic: true };
+    if (!idkitResponse && process.env.ALLOW_DEV_VERIFY === "false")
+      return reply.code(400).send({ error: "World ID proof required (dev bypass disabled)" });
+    if (idkitResponse && rp_id) {
+      const portal = await fetch(`https://developer.world.org/api/v4/verify/${rp_id}`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(idkitResponse),
+      });
+      if (!portal.ok) return reply.code(400).send({ error: "World ID verification failed", portal: await portal.json().catch(() => ({})) });
+    }
+    const updated = db.agents.patch(agent.id, { public: true })!;
+    return { agent: toPublicAgent(updated), published: true };
+  });
+
   // reasoning feed (GET) + run tick (POST)
   app.get("/api/agent/tick", async () => ({ feed: db.feed.all().sort((a, b) => b.ts - a.ts).slice(0, 100).map(toFeedPost) }));
   app.post<{ Body: any }>("/api/agent/tick", async (req) => {
     const { agentId } = (req.body ?? {}) as any;
-    const id = agentId ?? db.agents.all()[0]?.id;
-    if (!id) return { action: "skip", reasoning: "no agents", agent: "" };
+    const id = agentId ?? db.agents.all().find(isPublicAgent)?.id;
+    if (!id) return { action: "skip", reasoning: "no public agents", agent: "" };
     await tickAgent(id);
     const latest = db.feed.all().sort((a, b) => b.ts - a.ts)[0];
     return latest ? toFeedPost(latest) : { action: "skip", reasoning: "no feed", agent: "" };

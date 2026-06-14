@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import RightSidebar from '../components/layout/RightSidebar'
 import AccountSlider from '../components/feed/AccountSlider'
 import AccountListItem from '../components/feed/AccountListItem'
@@ -7,6 +7,7 @@ import ReasoningFeed from '../components/feed/ReasoningFeed'
 import { useMarkets, type MarketRow } from '../hooks/useMarkets'
 import { useCreators } from '../hooks/useCreators'
 import { toUiMarket } from '../lib/markets'
+import { flagOf, nameOf } from '../lib/countries'
 import type { Account } from '../types'
 
 type Tab = 'feed' | 'agents' | 'people' | 'trending'
@@ -21,9 +22,9 @@ const tabs: { id: Tab; label: string }[] = [
 const uiOf = (m: MarketRow) =>
   toUiMarket(m.demo, { yesPct: Math.round(m.api.priceYes * 100), total: m.api.volume, resolved: m.api.resolved })
 
-function MarketGrid({ rows, sort }: { rows: MarketRow[]; sort?: boolean }) {
+function MarketGrid({ rows, sort, empty }: { rows: MarketRow[]; sort?: boolean; empty?: string }) {
   const list = sort ? [...rows].sort((a, b) => b.api.volume - a.api.volume) : rows
-  if (!list.length) return <p className="text-muted text-center py-5">No markets yet — create the first one.</p>
+  if (!list.length) return <p className="text-muted text-center py-5">{empty ?? 'No markets yet — create the first one.'}</p>
   return (
     <div className="feeds px-lg-3">
       {list.map((m) => <MarketCard key={m.demo.id} market={uiOf(m)} />)}
@@ -47,8 +48,20 @@ function PeopleSection({ title, accounts }: { title: string; accounts: Account[]
 
 export default function FeedPage() {
   const [activeTab, setActiveTab] = useState<Tab>('feed')
+  const [countryFilter, setCountryFilter] = useState<string | null>(null)
   const { markets, loading } = useMarkets()
   const creators = useCreators()
+
+  // Country codes present across current markets (only politics markets carry them).
+  const presentCountries = useMemo(() => {
+    const s = new Set<string>()
+    markets.forEach((m) => (m.demo.countries ?? []).forEach((c) => s.add(c)))
+    return [...s]
+  }, [markets])
+
+  const visibleMarkets = countryFilter
+    ? markets.filter((m) => (m.demo.countries ?? []).includes(countryFilter))
+    : markets
 
   return (
     <>
@@ -80,10 +93,36 @@ export default function FeedPage() {
                     <AccountSlider accounts={creators} />
                   </div>
                 )}
+                {presentCountries.length > 0 && (
+                  <div className="d-flex flex-wrap gap-2 px-lg-3 mb-3 align-items-center">
+                    <span className="text-muted small me-1">Country:</span>
+                    <button
+                      type="button"
+                      className={`btn btn-sm rounded-pill ${!countryFilter ? 'btn-primary' : 'btn-outline-secondary text-body'}`}
+                      onClick={() => setCountryFilter(null)}
+                    >
+                      🌍 All
+                    </button>
+                    {presentCountries.map((code) => (
+                      <button
+                        type="button"
+                        key={code}
+                        title={nameOf(code)}
+                        className={`btn btn-sm rounded-pill ${countryFilter === code ? 'btn-primary' : 'btn-outline-secondary text-body'}`}
+                        onClick={() => setCountryFilter((cur) => (cur === code ? null : code))}
+                      >
+                        {flagOf(code)} {code}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {loading ? (
                   <div className="text-center py-5"><div className="spinner-border" role="status" /></div>
                 ) : (
-                  <MarketGrid rows={markets} />
+                  <MarketGrid
+                    rows={visibleMarkets}
+                    empty={countryFilter ? `No markets for ${flagOf(countryFilter)} ${nameOf(countryFilter)} yet.` : undefined}
+                  />
                 )}
               </div>
             )}

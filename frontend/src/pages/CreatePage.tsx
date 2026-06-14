@@ -3,6 +3,7 @@ import RightSidebar from '../components/layout/RightSidebar'
 import { useWallet } from '../hooks/useWallet'
 import { useUi } from '../components/layout/UiContext'
 import { createMarket, verifyStatus } from '../lib/api'
+import { COUNTRIES } from '../lib/countries'
 
 const CATEGORIES = ['crypto', 'macro', 'politics', 'sports', 'general']
 type Phase = 'idle' | 'creating' | 'done' | 'error'
@@ -13,7 +14,11 @@ export default function CreatePage() {
   const [question, setQuestion] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('crypto')
+  const [countries, setCountries] = useState<string[]>([])
   const [closeDays, setCloseDays] = useState(14)
+
+  const toggleCountry = (code: string) =>
+    setCountries((cur) => (cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code]))
   const [phase, setPhase] = useState<Phase>('idle')
   const [result, setResult] = useState<{ id: number; address: string; explorer: string } | null>(null)
   const [err, setErr] = useState('')
@@ -28,7 +33,7 @@ export default function CreatePage() {
 
     setPhase('creating'); setErr('')
     try {
-      const r = await createMarket({ question: question.trim(), description: description.trim(), category, closeTimeDays: closeDays, creator: address })
+      const r = await createMarket({ question: question.trim(), description: description.trim(), category, closeTimeDays: closeDays, creator: address, countries: category === 'politics' ? countries : [] })
       setResult({ id: r.id, address: r.address, explorer: r.explorer })
       setPhase('done')
       setQuestion(''); setDescription('')
@@ -89,6 +94,31 @@ export default function CreatePage() {
                     </div>
                   </div>
                 </div>
+
+                {category === 'politics' && (
+                  <div className="mb-3">
+                    <label className="text-muted small d-block mb-2">COUNTRIES (for politicians)</label>
+                    <div className="d-flex flex-wrap gap-3">
+                      {COUNTRIES.map((c) => (
+                        <div className="form-check" key={c.code}>
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            id={`country-${c.code}`}
+                            checked={countries.includes(c.code)}
+                            onChange={() => toggleCountry(c.code)}
+                          />
+                          <label className="form-check-label text-body small" htmlFor={`country-${c.code}`}>
+                            {c.flag} {c.name}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-muted small mt-2 mb-0">
+                      {countries.length ? `Selected: ${countries.join(', ')}` : 'Optional — pick the countries this market is about.'}
+                    </p>
+                  </div>
+                )}
 
                 <div className="d-grid">
                   <button type="submit" className="btn btn-primary rounded-5 w-100 py-3 fw-bold text-uppercase m-0" disabled={phase === 'creating'}>
