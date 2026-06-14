@@ -3,7 +3,7 @@ import TradeContent from '../components/trade/TradeContent'
 import ResolutionBlock from '../components/trade/ResolutionBlock'
 import RightSidebar from '../components/layout/RightSidebar'
 import type { TradeMarket } from '../data/trade'
-import { getMarket } from '../lib/markets'
+import { useMarketById } from '../hooks/useMarkets'
 import { useArcMarket } from '../hooks/useArcMarket'
 import { useWallet } from '../hooks/useWallet'
 
@@ -11,9 +11,18 @@ import { useWallet } from '../hooks/useWallet'
 // (chart + buy/sell box + comments). The buy/sell box places real on-chain bets.
 export default function LiveTradePage() {
   const { id } = useParams()
-  const demo = getMarket(id ?? '')
+  const { row, loading } = useMarketById(id)
+  const demo = row?.demo
   const { address } = useWallet()
   const { state } = useArcMarket(demo?.address, address)
+
+  if (loading && !demo) {
+    return (
+      <main className="col col-xl-6 order-xl-2 col-lg-12 order-lg-1 col-12 border-start border-end">
+        <div className="main-content p-5 text-center"><div className="spinner-border" role="status" /></div>
+      </main>
+    )
+  }
 
   if (!demo) {
     return (

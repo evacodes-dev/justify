@@ -117,12 +117,44 @@ export async function compatRoutes(app: FastifyInstance) {
     return { success: true, alreadyVerified: !!existing?.verified };
   });
 
+  // creators (real users) for the feed / people lists
+  app.get("/api/creators", async () => {
+    const users = db.users.all();
+    return {
+      creators: users.map((u) => ({
+        id: u.address.toLowerCase(), name: u.name, handle: "@" + u.name, address: u.address,
+        avatar: u.avatar || "/img/images.jpeg", bio: u.bio || "", verified: u.verified,
+        markets: db.markets.filter((m) => m.creator.toLowerCase() === u.address.toLowerCase()).length,
+      })),
+    };
+  });
+
+  // current user's profile (settings prefill)
+  app.get<{ Querystring: { address?: string } }>("/api/me", async (req) => {
+    const u = db.users.find((x) => x.address.toLowerCase() === String(req.query.address ?? "").toLowerCase());
+    return { user: u ?? null };
+  });
+
+  // update profile (settings)
+  app.post<{ Body: any }>("/api/profile", async (req, reply) => {
+    const { address, name, avatar, bio } = (req.body ?? {}) as any;
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address ?? "")) return reply.code(400).send({ error: "bad address" });
+    const u = db.users.find((x) => x.address.toLowerCase() === address.toLowerCase());
+    if (!u) return reply.code(404).send({ error: "user not found (verify first)" });
+    const cleanName = name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : u.name;
+    if (cleanName !== u.name && db.users.find((x) => x.name === cleanName)) return reply.code(409).send({ error: "name taken" });
+    db.users.patch(u.id, { name: cleanName, avatar: avatar ?? u.avatar, bio: bio ?? u.bio });
+    return { ok: true, user: db.users.get(u.id) };
+  });
+
   // create a market (backend is a registered creator; funds the initial liquidity)
   app.post<{ Body: any }>("/api/create-market", async (req, reply) => {
-    const { question } = (req.body ?? {}) as any;
+    const { question, description, category, image, closeTimeDays } = (req.body ?? {}) as any;
     if (!question || String(question).length < 6) return reply.code(400).send({ error: "question too short" });
     const L = toUsdc(2);
-    const closeTime = BigInt(Math.floor(Date.now() / 1000) + 14 * 86400);
+    const days = Math.max(1, Math.min(365, Number(closeTimeDays) || 14));
+    const closeTime = BigInt(Math.floor(Date.now() / 1000) + days * 86400);
+    const metadataURI = JSON.stringify({ category: category || "general", description: description || "", image: image || "" });
     try {
       const deployTx = await backendSigner().run(async ({ wallet, account }) => {
         const allowance = (await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, config.factory] })) as bigint;
@@ -130,7 +162,7 @@ export async function compatRoutes(app: FastifyInstance) {
           const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [config.factory, L], account, chain: arc });
           await publicClient.waitForTransactionReceipt({ hash: ah });
         }
-        return wallet.writeContract({ address: config.factory, abi: factoryAbi, functionName: "createMarket", args: [config.usdc, question, "ipfs://user", closeTime, L], account, chain: arc });
+        return wallet.writeContract({ address: config.factory, abi: factoryAbi, functionName: "createMarket", args: [config.usdc, question, metadataURI, closeTime, L], account, chain: arc });
       });
       await publicClient.waitForTransactionReceipt({ hash: deployTx as `0x${string}` });
       const count = (await publicClient.readContract({ address: config.factory, abi: factoryAbi, functionName: "marketCount" })) as bigint;

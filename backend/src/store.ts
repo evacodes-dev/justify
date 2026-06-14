@@ -73,7 +73,7 @@ export const kv = {
 };
 
 // ─── domain row types ───
-export type User = { id: string; address: string; name: string; verified: boolean; humanId?: string; avatar?: string; createdAt: number; arcTx?: string };
+export type User = { id: string; address: string; name: string; verified: boolean; humanId?: string; avatar?: string; bio?: string; createdAt: number; arcTx?: string };
 export type Market = { id: number; address: string; question: string; metadataURI: string; collateral: string; creator: string; closeTime: number; createdAt: number; priceYes: number; volume: number; resolved: boolean; outcome?: number; reason?: string };
 export type Trade = { id: string; marketId: number; user: string; outcome: number; amountUsdc: number; shares: number; priceYesAfter: number; tx: string; ts: number; agent?: boolean };
 export type Position = { id: string; marketId: number; user: string; yes: number; no: number };

@@ -29,12 +29,22 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
-// POST /api/create-market — deploys a real DemoMarket on Arc from the faucet.
-export function createMarket(question: string, creator?: string) {
+// POST /api/create-market — deploys a real FPMM market on Arc.
+export function createMarket(input: {
+  question: string; description?: string; category?: string; closeTimeDays?: number; creator?: string
+}) {
   return apiFetch<{ address: string; question: string; id: number; explorer: string; deployTx: string }>(
     '/api/create-market',
-    { method: 'POST', body: JSON.stringify({ question, creator }) },
+    { method: 'POST', body: JSON.stringify(input) },
   )
+}
+
+// profile (settings)
+export function getMe(address: string) {
+  return apiFetch<{ user: { name: string; address: string; bio?: string; avatar?: string; verified: boolean } | null }>(`/api/me?address=${address}`)
+}
+export function updateProfile(input: { address: string; name?: string; bio?: string; avatar?: string }) {
+  return apiFetch<{ ok: boolean; user: any }>('/api/profile', { method: 'POST', body: JSON.stringify(input) })
 }
 
 // POST /api/dotation — funds a freshly-logged-in embedded wallet with 0.5 USDC.

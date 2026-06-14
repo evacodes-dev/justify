@@ -2,29 +2,37 @@ import { useState } from 'react'
 import RightSidebar from '../components/layout/RightSidebar'
 import AccountSlider from '../components/feed/AccountSlider'
 import AccountListItem from '../components/feed/AccountListItem'
-import PostCard from '../components/feed/PostCard'
-import PostComposerBar from '../components/feed/PostComposerBar'
-import {
-  creatorAccounts,
-  peopleYouCanFollow,
-  popularPeople,
-  newsChannels,
-  politicians,
-} from '../data/accounts'
-import { feedPosts, trendingPosts } from '../data/posts'
+import MarketCard from '../components/market/MarketCard'
 import ReasoningFeed from '../components/feed/ReasoningFeed'
+import { useMarkets, type MarketRow } from '../hooks/useMarkets'
+import { useCreators } from '../hooks/useCreators'
+import { toUiMarket } from '../lib/markets'
 import type { Account } from '../types'
 
 type Tab = 'feed' | 'agents' | 'people' | 'trending'
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: 'feed', label: 'Feed' },
+  { id: 'feed', label: 'Markets' },
   { id: 'agents', label: '🤖 Agents' },
-  { id: 'people', label: 'People' },
+  { id: 'people', label: 'Creators' },
   { id: 'trending', label: 'Trending' },
 ]
 
+const uiOf = (m: MarketRow) =>
+  toUiMarket(m.demo, { yesPct: Math.round(m.api.priceYes * 100), total: m.api.volume, resolved: m.api.resolved })
+
+function MarketGrid({ rows, sort }: { rows: MarketRow[]; sort?: boolean }) {
+  const list = sort ? [...rows].sort((a, b) => b.api.volume - a.api.volume) : rows
+  if (!list.length) return <p className="text-muted text-center py-5">No markets yet — create the first one.</p>
+  return (
+    <div className="feeds px-lg-3">
+      {list.map((m) => <MarketCard key={m.demo.id} market={uiOf(m)} />)}
+    </div>
+  )
+}
+
 function PeopleSection({ title, accounts }: { title: string; accounts: Account[] }) {
+  if (!accounts.length) return null
   return (
     <div className="border-bottom py-3 px-lg-3">
       <h6 className="mb-3 fw-bold text-body">{title}</h6>
@@ -39,6 +47,9 @@ function PeopleSection({ title, accounts }: { title: string; accounts: Account[]
 
 export default function FeedPage() {
   const [activeTab, setActiveTab] = useState<Tab>('feed')
+  const { markets, loading } = useMarkets()
+  const creators = useCreators()
+
   return (
     <>
       <main className="col col-xl-6 order-xl-2 col-lg-12 order-lg-1 col-md-12 col-sm-12 col-12 border-start border-end">
@@ -61,23 +72,19 @@ export default function FeedPage() {
           <div className="tab-content">
             {activeTab === 'feed' && (
               <div className="tab-pane fade show active" role="tabpanel">
-                {/* Post Tab */}
-                <PostComposerBar />
-                {/* Follow People */}
-                <div>
-                  <div className="d-flex align-items-center justify-content-between mb-1 px-lg-3">
-                    <h6 className="mb-0 fw-bold text-body">Follow Creators</h6>
-                    <a href="#" className="text-white text-decoration-none material-icons">east</a>
+                {creators.length > 0 && (
+                  <div>
+                    <div className="d-flex align-items-center justify-content-between mb-1 px-lg-3">
+                      <h6 className="mb-0 fw-bold text-body">Creators</h6>
+                    </div>
+                    <AccountSlider accounts={creators} />
                   </div>
-                  {/* Slider Accounts */}
-                  <AccountSlider accounts={creatorAccounts} />
-                  {/* Feeds */}
-                  <div className="feeds">
-                    {feedPosts.map((post) => (
-                      <PostCard key={post.id} post={post} />
-                    ))}
-                  </div>
-                </div>
+                )}
+                {loading ? (
+                  <div className="text-center py-5"><div className="spinner-border" role="status" /></div>
+                ) : (
+                  <MarketGrid rows={markets} />
+                )}
               </div>
             )}
             {activeTab === 'agents' && (
@@ -87,29 +94,20 @@ export default function FeedPage() {
             )}
             {activeTab === 'people' && (
               <div className="tab-pane fade show active" role="tabpanel">
-                <PeopleSection title="People you can follow" accounts={peopleYouCanFollow} />
-                <PeopleSection title="Popular" accounts={popularPeople} />
-                <PeopleSection title="News Papers & Channels" accounts={newsChannels} />
-                <PeopleSection title="Politicians" accounts={politicians} />
+                <PeopleSection title="Verified creators" accounts={creators} />
+                {creators.length === 0 && <p className="text-muted text-center py-5">No creators yet — verify with World ID to become one.</p>}
               </div>
             )}
             {activeTab === 'trending' && (
               <div className="tab-pane fade show active" role="tabpanel">
-                <PostComposerBar wrapperClassName="px-3" />
-                <div className="feeds">
-                  {trendingPosts.map((post) => (
-                    <PostCard key={post.id} post={post} variant="compact" />
-                  ))}
-                </div>
+                {loading ? (
+                  <div className="text-center py-5"><div className="spinner-border" role="status" /></div>
+                ) : (
+                  <MarketGrid rows={markets} sort />
+                )}
               </div>
             )}
           </div>
-        </div>
-        <div className="text-center mt-4">
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-          <p className="mb-0 mt-2">Loading</p>
         </div>
       </main>
       <RightSidebar />

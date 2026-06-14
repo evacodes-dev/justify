@@ -58,6 +58,38 @@ export const getMarket = (id: number | string) =>
 export const getMarketByAddress = (address: string) =>
   DEMO_MARKETS.find((m) => m.address.toLowerCase() === address.toLowerCase())
 
+// ─── dynamic markets from the backend (real FPMM markets, incl. user-created) ───
+export type ApiMarket = {
+  id: number; address: `0x${string}`; question: string; metadataURI: string;
+  priceYes: number; volume: number; resolved: boolean; outcome?: number; closeTime: number; creator: string
+}
+
+// Derive a card emoji/thumb/tags from the question + metadata category.
+function derive(question: string, category: string): Pick<DemoMarket, 'emoji' | 'gradient' | 'thumb' | 'tags'> {
+  const q = `${question} ${category}`.toLowerCase()
+  if (/\beth|ethereum\b/.test(q)) return { emoji: 'Ξ', gradient: 'linear-gradient(135deg,#627eea,#1b1f3b)', thumb: '/img/ETHfullsize.webp', tags: '#crypto #eth' }
+  if (/\bbtc|bitcoin\b/.test(q)) return { emoji: '₿', gradient: 'linear-gradient(135deg,#f7931a,#7a3e00)', thumb: '/img/will-microstrategy-purchase-bitcoin-july-1-7-mzoE5TYk_cCI.webp', tags: '#crypto #btc' }
+  if (/\bsol|solana\b/.test(q)) return { emoji: '◎', gradient: 'linear-gradient(135deg,#14f195,#1b1f3b)', thumb: '/img/post1.png', tags: '#crypto #sol' }
+  if (/\bfed|rate|fomc|inflation|cpi\b/.test(q)) return { emoji: '🏦', gradient: 'linear-gradient(135deg,#455a64,#15202b)', thumb: '/img/post1.png', tags: '#macro #fed' }
+  if (/\belect|president|vote|poll\b/.test(q)) return { emoji: '🗳️', gradient: 'linear-gradient(135deg,#8e24aa,#311b92)', thumb: '/img/post1.png', tags: '#politics' }
+  if (/\bgame|win|cup|match|score|sport\b/.test(q)) return { emoji: '🏆', gradient: 'linear-gradient(135deg,#2e7d32,#1b5e20)', thumb: '/img/post1.png', tags: '#sports' }
+  return { emoji: '❓', gradient: 'linear-gradient(135deg,#3949ab,#1a237e)', thumb: '/img/post1.png', tags: category ? `#${category}` : '#market' }
+}
+
+export function apiMarketToDemo(m: ApiMarket): DemoMarket {
+  let category = 'general'
+  try { category = JSON.parse(m.metadataURI || '{}').category || 'general' } catch { /* legacy uri */ }
+  return { id: m.id, address: m.address, question: m.question, author: 'justify', ...derive(m.question, category) }
+}
+
+export async function fetchMarkets(): Promise<{ demo: DemoMarket; api: ApiMarket }[]> {
+  const base = import.meta.env.VITE_API_BASE ?? ''
+  const r = await fetch(`${base}/api/markets`)
+  const body = await r.json()
+  const list: ApiMarket[] = body.markets ?? []
+  return list.map((m) => ({ demo: apiMarketToDemo(m), api: m }))
+}
+
 export const USDC_ABI = [
   { type: 'function', name: 'approve', stateMutability: 'nonpayable', inputs: [{ type: 'address' }, { type: 'uint256' }], outputs: [{ type: 'bool' }] },
   { type: 'function', name: 'allowance', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'uint256' }] },

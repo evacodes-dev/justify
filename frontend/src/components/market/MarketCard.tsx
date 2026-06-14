@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import type { Market } from '../../types'
 import ChanceArc from './ChanceArc'
 
@@ -10,6 +10,8 @@ type Side = 'yes' | 'no'
 export default function MarketCard({ market }: { market: Market }) {
   const [side, setSide] = useState<Side | null>(null)
   const [amount, setAmount] = useState(10)
+  const navigate = useNavigate()
+  const tradeHref = `/trade/m/${market.id}`
 
   const price = side === 'yes' ? market.yesPrice : market.noPrice
   const payout = price > 0 && !Number.isNaN(amount) ? (amount / price).toFixed(2) : '0.00'
@@ -29,7 +31,7 @@ export default function MarketCard({ market }: { market: Market }) {
               <img src={market.thumb} alt="Market Thumbnail" className="market-thumb" />
               <div className="market-info">
                 <div className="market-title">
-                  <Link to="/trade">{market.title}</Link>
+                  <Link to={tradeHref}>{market.title}</Link>
                 </div>
                 <div className="market-description">{market.description}</div>
                 <div className="market-meta">
@@ -79,7 +81,7 @@ export default function MarketCard({ market }: { market: Market }) {
                       onChange={(e) => setAmount(parseInt(e.target.value))}
                     />
                   </div>
-                  <button className={`confirm-order btn-${side}`}>
+                  <button className={`confirm-order btn-${side}`} onClick={() => navigate(tradeHref)}>
                     <div className="btn-title">
                       Buy <span className="side-label">{sideLabel}</span>
                     </div>
