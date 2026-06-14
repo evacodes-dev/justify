@@ -119,7 +119,7 @@ export async function compatRoutes(app: FastifyInstance) {
     const existing = db.users.find((u) => u.address.toLowerCase() === walletAddress.toLowerCase());
     db.users.put({
       id: walletAddress.toLowerCase(), address: walletAddress,
-      name: name || existing?.name || walletAddress.slice(0, 8).toLowerCase(),
+      name: (name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : "") || existing?.name || walletAddress.slice(0, 8).toLowerCase(),
       verified: true, humanId: nullifier ?? existing?.humanId ?? walletAddress.toLowerCase(),
       createdAt: existing?.createdAt ?? Date.now(), arcTx,
     });
@@ -140,8 +140,8 @@ export async function compatRoutes(app: FastifyInstance) {
 
   // public profile of any user (by name or address) + the markets they created
   app.get<{ Params: { key: string } }>("/api/user/:key", async (req, reply) => {
-    const key = String(req.params.key ?? "");
-    const u = db.users.find((x) => x.name === key.toLowerCase() || x.address.toLowerCase() === key.toLowerCase());
+    const key = String(req.params.key ?? "").toLowerCase();
+    const u = db.users.find((x) => x.name.toLowerCase() === key || x.address.toLowerCase() === key);
     if (!u) return reply.code(404).send({ error: "not found" });
     const subs = submitters();
     const myIds = Object.entries(subs).filter(([, a]) => a.toLowerCase() === u.address.toLowerCase()).map(([id]) => Number(id));
