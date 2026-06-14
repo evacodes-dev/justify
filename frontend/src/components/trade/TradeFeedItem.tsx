@@ -86,7 +86,11 @@ export default function TradeFeedItem({ market, live }: { market: TradeMarket; l
                       <h2>{market.title}</h2>
                       <p className={market.metaClassName}>{market.meta}</p>
                     </div>
-                    <MarketChart />
+                    <MarketChart
+                      marketId={market.chart?.marketId}
+                      currentYesPct={market.chart?.currentYesPct}
+                      resolved={market.chart?.resolved}
+                    />
                     <TradeBox yesOption={market.yesOption} noOption={market.noOption} live={live} />
                   </div>
                   <div

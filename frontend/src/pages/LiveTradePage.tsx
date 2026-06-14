@@ -58,6 +58,7 @@ export default function LiveTradePage() {
     commentsCount: '0',
     reposts: '0',
     comments: [],
+    chart: { marketId: demo.id, currentYesPct: yesPct, resolved: state?.resolved },
   }
 
   return (

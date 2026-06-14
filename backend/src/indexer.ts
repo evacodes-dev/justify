@@ -9,6 +9,19 @@ import { db, kv, type Market } from "./store.js";
 
 const CHUNK = 5_000n;
 
+// Block timestamps are immutable, so cache them across ticks. Used to give trades a
+// real on-chain time (the price chart's x-axis) instead of the indexer's poll time.
+const blockTsCache = new Map<string, number>();
+async function blockTimeMs(blockNumber: bigint): Promise<number> {
+  const key = blockNumber.toString();
+  const hit = blockTsCache.get(key);
+  if (hit !== undefined) return hit;
+  const block = await publicClient.getBlock({ blockNumber });
+  const ms = Number(block.timestamp) * 1000;
+  blockTsCache.set(key, ms);
+  return ms;
+}
+
 async function readMarketStatic(address: `0x${string}`) {
   const [question, metadataURI, collateral, creator, closeTime] = await Promise.all([
     publicClient.readContract({ address, abi: marketAbi, functionName: "question" }),
@@ -43,6 +56,35 @@ function addPosition(marketId: number, user: string, outcome: number, shares: nu
   if (outcome === 1) p.yes += shares;
   else p.no += shares;
   db.positions.put(p);
+}
+
+// One-time historical trade backfill for a market. The incremental loop only sees
+// Buy events for markets already in the DB when each block-chunk is scanned, so
+// trades that predate a market's discovery (seed markets created before deployBlock,
+// or any discovery race) are never indexed. Scan this market's full Buy history once
+// and upsert the trade rows — idempotent (keyed by tx:logIndex), so safe to re-run.
+// Only db.trades + volume are touched here; positions/feed stay with the live loop.
+const buyEvent = marketAbi.find((x: any) => x.name === "Buy");
+async function backfillMarketTrades(m: Market, latest: bigint) {
+  for (let f = config.deployBlock + 1n; f <= latest; f += CHUNK) {
+    const t = f + CHUNK > latest ? latest : f + CHUNK;
+    const logs = await publicClient.getLogs({ address: m.address as `0x${string}`, event: buyEvent as any, fromBlock: f, toBlock: t });
+    for (const log of logs) {
+      const a = (log as any).args;
+      const user = getAddress(a.user);
+      const blockTs = await blockTimeMs((log as any).blockNumber).catch(() => Date.now());
+      db.trades.put({
+        id: (log as any).transactionHash + ":" + (log as any).logIndex,
+        marketId: m.id, user, outcome: Number(a.outcome), amountUsdc: fromUsdc(a.amountIn), shares: fromUsdc(a.tokensOut),
+        priceYesAfter: Number(a.priceYesAfter) / 1e18, tx: (log as any).transactionHash, ts: Date.now(), blockTs,
+        agent: !!db.agents.find((ag) => ag.address.toLowerCase() === user.toLowerCase()),
+      });
+    }
+  }
+  // Recompute volume from the authoritative trade set (avoids double counting if the
+  // incremental loop already saw some of these trades this run).
+  const volume = db.trades.filter((x) => x.marketId === m.id).reduce((s, x) => s + x.amountUsdc, 0);
+  db.markets.patch(m.id, { volume, backfilled: true });
 }
 
 function recomputeReputation(marketId: number, winningOutcome: number) {
@@ -115,10 +157,11 @@ async function tick() {
         const shares = fromUsdc(a.tokensOut);
         const user = getAddress(a.user);
         const isAgent = !!db.agents.find((ag) => ag.address.toLowerCase() === user.toLowerCase());
+        const blockTs = await blockTimeMs((log as any).blockNumber).catch(() => Date.now());
         db.trades.put({
           id: (log as any).transactionHash + ":" + (log as any).logIndex,
           marketId: m.id, user, outcome: Number(a.outcome), amountUsdc, shares,
-          priceYesAfter: Number(a.priceYesAfter) / 1e18, tx: (log as any).transactionHash, ts: Date.now(), agent: isAgent,
+          priceYesAfter: Number(a.priceYesAfter) / 1e18, tx: (log as any).transactionHash, ts: Date.now(), blockTs, agent: isAgent,
         });
         addPosition(m.id, user, Number(a.outcome), shares);
         db.markets.patch(m.id, { volume: m.volume + amountUsdc, priceYes: Number(a.priceYesAfter) / 1e18 });
@@ -139,6 +182,12 @@ async function tick() {
         });
       }
     }
+  }
+
+  // one-time historical trade backfill for any market not yet backfilled (captures
+  // trades that predate the market's discovery — e.g. seed markets pre-deployBlock)
+  for (const m of db.markets.all().filter((x) => !x.backfilled)) {
+    try { await backfillMarketTrades(m, latest); } catch (e) { console.error("[backfill]", m.id, (e as Error).message); }
   }
 
   // keep prices fresh for open markets (cheap)

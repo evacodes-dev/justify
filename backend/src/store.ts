@@ -14,7 +14,9 @@ export class Table<T extends { id: string | number }> {
   }
   all(): T[] {
     try {
-      return existsSync(this.file) ? JSON.parse(readFileSync(this.file, "utf8")) : [];
+      return existsSync(this.file)
+        ? JSON.parse(readFileSync(this.file, "utf8"))
+        : [];
     } catch {
       return [];
     }
@@ -59,30 +61,141 @@ const kvFile = join(dataDir, "_kv.json");
 export const kv = {
   get<T = any>(k: string, dflt: T): T {
     try {
-      const o = existsSync(kvFile) ? JSON.parse(readFileSync(kvFile, "utf8")) : {};
+      const o = existsSync(kvFile)
+        ? JSON.parse(readFileSync(kvFile, "utf8"))
+        : {};
       return k in o ? o[k] : dflt;
     } catch {
       return dflt;
     }
   },
   set(k: string, v: any) {
-    const o = existsSync(kvFile) ? JSON.parse(readFileSync(kvFile, "utf8")) : {};
+    const o = existsSync(kvFile)
+      ? JSON.parse(readFileSync(kvFile, "utf8"))
+      : {};
     o[k] = v;
     writeFileSync(kvFile, JSON.stringify(o, null, 2));
   },
 };
 
 // ─── domain row types ───
-export type User = { id: string; address: string; name: string; verified: boolean; humanId?: string; avatar?: string; bio?: string; createdAt: number; arcTx?: string };
-export type Market = { id: number; address: string; question: string; metadataURI: string; collateral: string; creator: string; closeTime: number; createdAt: number; priceYes: number; volume: number; resolved: boolean; outcome?: number; reason?: string; oracle?: "chainlink" | "claude" };
-export type Trade = { id: string; marketId: number; user: string; outcome: number; amountUsdc: number; shares: number; priceYesAfter: number; tx: string; ts: number; agent?: boolean };
-export type Position = { id: string; marketId: number; user: string; yes: number; no: number };
-export type FeedItem = { id: string; ts: number; kind: "trade" | "agent" | "resolution"; agent?: boolean; agentName?: string; user?: string; marketId?: number; marketQuestion?: string; outcome?: number; amountUsdc?: number; reasoning?: string; confidence?: number; estProb?: number; impliedProb?: number; edge?: number; dataUsed?: string[]; humanBacked?: boolean; tx?: string; status?: string };
+export type User = {
+  id: string;
+  address: string;
+  name: string;
+  verified: boolean;
+  humanId?: string;
+  avatar?: string;
+  bio?: string;
+  createdAt: number;
+  arcTx?: string;
+};
+// `backfilled`: the incremental indexer only captures Buy events for markets known
+// at scan time, so a market's trades that predate its discovery are missed. Once its
+// full Buy history has been backfilled this is set so we don't rescan every tick.
+export type Market = {
+  id: number;
+  address: string;
+  question: string;
+  metadataURI: string;
+  collateral: string;
+  creator: string;
+  closeTime: number;
+  createdAt: number;
+  priceYes: number;
+  volume: number;
+  resolved: boolean;
+  outcome?: number;
+  reason?: string;
+  oracle?: "chainlink" | "claude";
+  backfilled?: boolean;
+};
+// `ts` is wall-clock at index time; `blockTs` is the on-chain block time (accurate
+// x-axis for the price chart). Older rows may lack blockTs — fall back to ts.
+export type Trade = {
+  id: string;
+  marketId: number;
+  user: string;
+  outcome: number;
+  amountUsdc: number;
+  shares: number;
+  priceYesAfter: number;
+  tx: string;
+  ts: number;
+  blockTs?: number;
+  agent?: boolean;
+};
+export type Position = {
+  id: string;
+  marketId: number;
+  user: string;
+  yes: number;
+  no: number;
+};
+export type FeedItem = {
+  id: string;
+  ts: number;
+  kind: "trade" | "agent" | "resolution";
+  agent?: boolean;
+  agentName?: string;
+  user?: string;
+  marketId?: number;
+  marketQuestion?: string;
+  outcome?: number;
+  amountUsdc?: number;
+  reasoning?: string;
+  confidence?: number;
+  estProb?: number;
+  impliedProb?: number;
+  edge?: number;
+  dataUsed?: string[];
+  humanBacked?: boolean;
+  tx?: string;
+  status?: string;
+};
 // `public`: a bot starts as a draft (false) and only becomes world-visible after the
 // owner confirms with World ID. Legacy rows (field absent) are treated as public.
-export type AgentRow = { id: string; name: string; ownerHumanId: string; ownerAddress: string; address: string; pk: string; strategy: string; preset: string; budgetUsdc: number; spentUsdc: number; active: boolean; public?: boolean; humanBacked: boolean; agentBookTx?: string; createdAt: number; wins: number; losses: number };
-export type Reputation = { id: string; subject: string; accuracy: number; pnl: number; markets: number; isAgent: boolean };
-export type Approval = { id: string; agentId: string; agentName: string; ownerAddress: string; marketId: number; marketQuestion: string; outcome: number; amountUsdc: number; reasoning: string; ts: number; status: "pending" | "approved" | "rejected"; tx?: string };
+export type AgentRow = {
+  id: string;
+  name: string;
+  ownerHumanId: string;
+  ownerAddress: string;
+  address: string;
+  pk: string;
+  strategy: string;
+  preset: string;
+  budgetUsdc: number;
+  spentUsdc: number;
+  active: boolean;
+  public?: boolean;
+  humanBacked: boolean;
+  agentBookTx?: string;
+  createdAt: number;
+  wins: number;
+  losses: number;
+};
+export type Reputation = {
+  id: string;
+  subject: string;
+  accuracy: number;
+  pnl: number;
+  markets: number;
+  isAgent: boolean;
+};
+export type Approval = {
+  id: string;
+  agentId: string;
+  agentName: string;
+  ownerAddress: string;
+  marketId: number;
+  marketQuestion: string;
+  outcome: number;
+  amountUsdc: number;
+  reasoning: string;
+  ts: number;
+  status: "pending" | "approved" | "rejected";
+  tx?: string;
+};
 
 export const db = {
   users: new Table<User>("users"),
@@ -98,5 +211,8 @@ export const db = {
 // nullifier dedup (World ID anti-replay)
 export const nullifiers = {
   has: (n: string) => kv.get<string[]>("nullifiers", []).includes(n),
-  add: (n: string) => kv.set("nullifiers", [...new Set([...kv.get<string[]>("nullifiers", []), n])]),
+  add: (n: string) =>
+    kv.set("nullifiers", [
+      ...new Set([...kv.get<string[]>("nullifiers", []), n]),
+    ]),
 };

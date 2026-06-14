@@ -14,6 +14,22 @@ import { tickAgent, executeBuy } from "../agent-loop.js";
 
 const sideOf = (o?: number) => (o === 1 ? "YES" : o === 0 ? "NO" : undefined);
 
+// ─── price-history (market chart) ───
+// Window length per toggle; ALL has no window (whole life of the market).
+const RANGE_MS: Record<string, number> = {
+  "1H": 3_600e3, "6H": 6 * 3_600e3, "1D": 86_400e3, "1W": 7 * 86_400e3, "1M": 30 * 86_400e3,
+};
+const MAX_POINTS = 120; // keep the canvas series light
+
+// Uniformly sample down to `max` points, always keeping the first and last.
+function downsample<T>(arr: T[], max: number): T[] {
+  if (arr.length <= max) return arr;
+  const step = (arr.length - 1) / (max - 1);
+  const out: T[] = [];
+  for (let i = 0; i < max; i++) out.push(arr[Math.round(i * step)]);
+  return out;
+}
+
 // a bot is world-visible unless explicitly a draft (public === false)
 const isPublicAgent = (a: AgentRow) => a.public !== false;
 
@@ -63,6 +79,45 @@ export async function compatRoutes(app: FastifyInstance) {
       creator: m.creator, creatorName: creatorNameOf(m.id, m.creator),
     })),
   }));
+
+  // price history for the market chart — derived from indexed Buy trades.
+  // Series = seed (0.5 @ creation) → each trade's priceYesAfter → tail (current price,
+  // or the resolution outcome). FPMM price only moves on a buy, so the flat segment
+  // from the last trade to "now" is correct. Downsampled to MAX_POINTS for the canvas.
+  app.get<{ Params: { id: string }; Querystring: { range?: string } }>("/api/markets/:id/history", async (req, reply) => {
+    const m = db.markets.get(Number(req.params.id));
+    if (!m) return reply.code(404).send({ error: "not found" });
+    const now = Date.now();
+
+    const trades = db.trades
+      .filter((t) => t.marketId === m.id)
+      .map((t) => ({ t: t.blockTs ?? t.ts, p: t.priceYesAfter }))
+      .sort((a, b) => a.t - b.t);
+
+    const tailP = m.resolved ? (m.outcome === 1 ? 1 : m.outcome === 0 ? 0 : m.priceYes) : m.priceYes;
+    // Anchor the 0.5 seed at the market's creation — but never later than its first
+    // trade. `createdAt` is the indexer's discovery time, which for seed markets
+    // (created before deployBlock) can post-date their trades; clamping keeps the
+    // series strictly time-ordered so the chart's x-axis doesn't run backwards.
+    const seedT = Math.min(m.createdAt, trades.length ? trades[0].t : now);
+    const full = [{ t: seedT, p: 0.5 }, ...trades, { t: now, p: tailP }];
+
+    // window by range; keep one anchor just before the window so the line enters
+    // the chart from the left edge instead of starting mid-canvas.
+    const range = String(req.query.range ?? "ALL").toUpperCase();
+    const span = RANGE_MS[range];
+    let pts = full;
+    if (span) {
+      const from = now - span;
+      const inside = full.filter((pt) => pt.t >= from);
+      const anchor = full.filter((pt) => pt.t < from).pop();
+      pts = anchor ? [{ p: anchor.p, t: from }, ...inside] : inside.length ? inside : [full[full.length - 1]];
+    }
+
+    // `trades` is the real trade count (seed/tail excluded) so the UI can show an
+    // empty state instead of a meaningless flat line for a market no one has traded.
+    return { id: m.id, range, current: tailP, resolved: m.resolved, trades: trades.length, points: downsample(pts, MAX_POINTS) };
+  });
 
   // dotation: top up an embedded wallet with native USDC
   app.post<{ Body: any }>("/api/dotation", async (req, reply) => {

@@ -28,6 +28,9 @@ export interface TradeMarket {
   commentsCount: string
   reposts: string
   comments: Comment[]
+  // Present for real on-chain markets (LiveTradePage); drives the live price chart.
+  // Absent on the static showcase pages, which fall back to a placeholder series.
+  chart?: { marketId?: number; currentYesPct?: number; resolved?: boolean }
 }
 
 export const barcelonaTradeMarket: TradeMarket = {
