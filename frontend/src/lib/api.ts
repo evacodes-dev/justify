@@ -39,6 +39,12 @@ export function createMarket(input: {
   )
 }
 
+export interface PublicUser { name: string; address: string; bio?: string; avatar?: string; verified: boolean; createdAt: number }
+export interface UserMarket { id: number; question: string; priceYes: number; volume: number; resolved: boolean }
+export function getUser(key: string) {
+  return apiFetch<{ user: PublicUser; markets: UserMarket[] }>(`/api/user/${key}`)
+}
+
 // profile (settings)
 export function getMe(address: string) {
   return apiFetch<{ user: { name: string; address: string; bio?: string; avatar?: string; verified: boolean } | null }>(`/api/me?address=${address}`)

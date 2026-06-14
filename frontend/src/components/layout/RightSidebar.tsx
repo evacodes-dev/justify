@@ -61,12 +61,12 @@ function WhoToFollow() {
           key={account.id}
           className={`p-3 d-flex text-dark text-decoration-none account-item${i < shown.length - 1 ? ' border-bottom' : ''}`}
         >
-          <Link to="/profile">
+          <Link to={`/u/${account.name}`}>
             <img src={account.avatar} className="img-fluid rounded-circle me-3" alt="profile-img" />
           </Link>
           <div>
             <p className="fw-bold mb-0 pe-3 d-flex align-items-center">
-              <Link className="text-decoration-none text-white" to="/profile">{account.name}</Link>
+              <Link className="text-decoration-none text-white" to={`/u/${account.name}`}>{account.name}</Link>
               {account.verified && <VerifiedBadge />}
             </p>
             <div className="text-muted fw-light">

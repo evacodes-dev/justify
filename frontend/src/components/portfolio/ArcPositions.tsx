@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { DEMO_MARKETS, type DemoMarket } from '../../lib/markets'
+import { type DemoMarket } from '../../lib/markets'
 import { readPosition, claimMarket, txUrl } from '../../lib/arc'
 import { useWallet } from '../../hooks/useWallet'
 import { useUsdcBalance } from '../../hooks/useUsdcBalance'
+import { useMarkets } from '../../hooks/useMarkets'
 
 type Pos = Awaited<ReturnType<typeof readPosition>>
 type Row = { market: DemoMarket; pos: Pos }
@@ -79,17 +80,18 @@ function PositionCard({ row, onClaimed }: { row: Row; onClaimed: () => void }) {
 export default function ArcPositions() {
   const { address, isLoggedIn, promptLogin } = useWallet()
   const { balance, refresh: refreshBalance } = useUsdcBalance(address)
+  const { markets } = useMarkets()
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(false)
 
   const load = useCallback(() => {
-    if (!address) {
+    if (!address || markets.length === 0) {
       setRows([])
       return
     }
     setLoading(true)
     Promise.all(
-      DEMO_MARKETS.map((market) =>
+      markets.map(({ demo: market }) =>
         readPosition(market.address, address)
           .then((pos) => ({ market, pos }))
           .catch(() => null),
@@ -100,7 +102,7 @@ export default function ArcPositions() {
         setRows(staked)
       })
       .finally(() => setLoading(false))
-  }, [address])
+  }, [address, markets])
 
   useEffect(() => {
     load()

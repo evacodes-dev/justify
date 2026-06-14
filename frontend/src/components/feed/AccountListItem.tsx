@@ -6,7 +6,7 @@ import VerifiedBadge from '../common/VerifiedBadge'
 export default function AccountListItem({ account, borderBottom }: { account: Account; borderBottom?: boolean }) {
   return (
     <Link
-      to="/profile"
+      to={`/u/${account.name}`}
       className={`p-3${borderBottom ? ' border-bottom' : ''} d-flex text-dark text-decoration-none account-item pf-item`}
     >
       <img src={account.avatar} className="img-fluid rounded-circle me-3" alt="profile-img" />

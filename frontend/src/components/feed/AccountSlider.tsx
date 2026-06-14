@@ -28,7 +28,7 @@ export default function AccountSlider({ accounts }: { accounts: Account[] }) {
           <div className="me-2 bg-glass shadow-sm rounded-4 p-3 user-list-item d-flex justify-content-center my-2">
             <div className="text-center">
               <div className="position-relative d-flex justify-content-center">
-                <Link to="/profile" className="text-decoration-none">
+                <Link to={`/u/${account.name}`} className="text-decoration-none">
                   <img src={account.avatar} className="img-fluid rounded-circle mb-3" alt="profile-img" />
                   <div className="position-absolute">
                     <span className="material-icons bg-primary small p-1 fw-bold text-white rounded-circle">done</span>

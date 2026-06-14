@@ -12,6 +12,7 @@ import LeaderboardPage from './pages/LeaderboardPage'
 import DepositPage from './pages/DepositPage'
 import PortfolioPage from './pages/PortfolioPage'
 import ProfilePage from './pages/ProfilePage'
+import UserProfilePage from './pages/UserProfilePage'
 import EditProfilePage from './pages/EditProfilePage'
 import CreatePage from './pages/CreatePage'
 import NotificationPage from './pages/NotificationPage'
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/deposit" element={<DepositPage />} />
             <Route path="/portfolio" element={<PortfolioPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/u/:name" element={<UserProfilePage />} />
             <Route path="/edit-profile" element={<EditProfilePage />} />
             <Route path="/create" element={<CreatePage />} />
             <Route path="/notification" element={<NotificationPage />} />

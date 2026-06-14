@@ -138,6 +138,20 @@ export async function compatRoutes(app: FastifyInstance) {
     };
   });
 
+  // public profile of any user (by name or address) + the markets they created
+  app.get<{ Params: { key: string } }>("/api/user/:key", async (req, reply) => {
+    const key = String(req.params.key ?? "");
+    const u = db.users.find((x) => x.name === key.toLowerCase() || x.address.toLowerCase() === key.toLowerCase());
+    if (!u) return reply.code(404).send({ error: "not found" });
+    const subs = submitters();
+    const myIds = Object.entries(subs).filter(([, a]) => a.toLowerCase() === u.address.toLowerCase()).map(([id]) => Number(id));
+    const markets = db.markets.all().filter((m) => myIds.includes(m.id)).map((m) => ({ id: m.id, question: m.question, priceYes: m.priceYes, volume: m.volume, resolved: m.resolved }));
+    return {
+      user: { name: u.name, address: u.address, bio: u.bio ?? "", avatar: u.avatar || "/img/images.jpeg", verified: u.verified, createdAt: u.createdAt },
+      markets,
+    };
+  });
+
   // current user's profile (settings prefill)
   app.get<{ Querystring: { address?: string } }>("/api/me", async (req) => {
     const u = db.users.find((x) => x.address.toLowerCase() === String(req.query.address ?? "").toLowerCase());
