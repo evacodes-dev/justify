@@ -1,7 +1,6 @@
 import Dropdown from 'react-bootstrap/Dropdown'
 import { Link } from 'react-router-dom'
 import type { TradeMarket } from '../../data/trade'
-import { useUi } from '../layout/UiContext'
 import CommentItem from '../feed/CommentItem'
 import MarketChart from './MarketChart'
 import TradeBox, { type LiveTrade } from './TradeBox'
@@ -46,7 +45,6 @@ function TradeFeedMenu() {
 // The trading-panel feed item shared by /trade and /trade-founder:
 // author header, market title, price chart, buy/sell box, action counters and comments.
 export default function TradeFeedItem({ market, live }: { market: TradeMarket; live?: LiveTrade }) {
-  const { openModal } = useUi()
   const { author } = market
 
   return (
@@ -122,7 +120,7 @@ export default function TradeFeedItem({ market, live }: { market: TradeMarket; l
                       </a>
                     </div>
                   </div>
-                  <div className="d-flex align-items-center mb-3" onClick={() => openModal('comment')}>
+                  <div className="d-flex align-items-center mb-3">
                     <span className="material-icons bg-transparent border-0 text-primary pe-2 md-36">account_circle</span>
                     <input
                       type="text"
