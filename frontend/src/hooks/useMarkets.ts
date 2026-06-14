@@ -1,27 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { fetchMarkets, type DemoMarket, type ApiMarket } from '../lib/markets'
 
 export type MarketRow = { demo: DemoMarket; api: ApiMarket }
 
-// Live list of real FPMM markets from the backend (polls every 10s). Includes
-// user-created markets, so nothing is hardcoded.
+// Live list of real FPMM markets from the backend (cached + polled every 10s via
+// react-query, so multiple components share one request). Includes user-created
+// markets, so nothing is hardcoded.
 export function useMarkets() {
-  const [markets, setMarkets] = useState<MarketRow[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const refresh = useCallback(() => {
-    fetchMarkets()
-      .then((m) => { setMarkets(m); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    refresh()
-    const t = setInterval(refresh, 10000)
-    return () => clearInterval(t)
-  }, [refresh])
-
-  return { markets, loading, refresh }
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['markets'],
+    queryFn: fetchMarkets,
+    refetchInterval: 10_000,
+  })
+  return { markets: data ?? [], loading: isLoading, refresh: () => { void refetch() } }
 }
 
 export function useMarketById(id?: string | number) {

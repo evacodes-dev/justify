@@ -39,7 +39,6 @@ export function createMarket(input: {
   )
 }
 
-export interface PublicUser { name: string; address: string; bio?: string; avatar?: string; verified: boolean; country?: string | null; createdAt: number }
 export interface CanBet { allowed: boolean; restricted?: boolean; countries?: string[]; userCountry?: string | null; reason?: string }
 export function getCanBet(id: number | string, address?: string) {
   return apiFetch<CanBet>(`/api/can-bet/${id}${address ? `?address=${address}` : ''}`)
@@ -48,6 +47,16 @@ export interface ChainlinkPrice { asset: string; price: number; feed: string; up
 export function getChainlinkPrice(asset: string) {
   return apiFetch<ChainlinkPrice>(`/api/chainlink/${asset}`)
 }
+
+// ---- Market price history (chart) ----
+export type ChartRange = '1H' | '6H' | '1D' | '1W' | '1M' | 'ALL'
+// `points` is ascending by time; `t` = ms epoch, `p` = YES probability (0..1).
+export interface MarketHistory { id: number; range: ChartRange; current: number; resolved: boolean; trades: number; points: { t: number; p: number }[] }
+export function getMarketHistory(id: number | string, range: ChartRange = 'ALL') {
+  return apiFetch<MarketHistory>(`/api/markets/${id}/history?range=${range}`)
+}
+
+export interface PublicUser { name: string; address: string; bio?: string; avatar?: string; verified: boolean; country?: string | null; createdAt: number }
 export interface UserMarket { id: number; question: string; priceYes: number; volume: number; resolved: boolean }
 export function getUser(key: string) {
   return apiFetch<{ user: PublicUser; markets: UserMarket[] }>(`/api/user/${key}`)
