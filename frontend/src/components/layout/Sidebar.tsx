@@ -13,19 +13,24 @@ const shortAddress = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`
 // Logged in: shows the connected address + live USDC balance on Arc; click
 // opens Dynamic's profile modal (account details + log out).
 function SignInButton() {
-  const { primaryWallet, setShowAuthFlow, setShowDynamicUserProfile } = useDynamicContext()
+  const { primaryWallet, setShowAuthFlow, setShowDynamicUserProfile, handleLogOut } = useDynamicContext()
   const { address } = useWallet()
   const { balance } = useUsdcBalance(address)
   const className = 'btn btn-primary w-100 text-decoration-none rounded-4 py-3 fw-bold text-uppercase m-0'
 
   if (primaryWallet) {
     return (
-      <button type="button" className={`${className} d-flex flex-column align-items-center gap-1`} onClick={() => setShowDynamicUserProfile(true)}>
-        <span>{shortAddress(primaryWallet.address)}</span>
-        <span className="badge bg-light-glass text-body fw-normal text-lowercase">
-          {balance == null ? '… USDC' : `$${balance.toFixed(2)} USDC · Arc`}
-        </span>
-      </button>
+      <div className="d-flex flex-column gap-2">
+        <button type="button" className={`${className} d-flex flex-column align-items-center gap-1`} onClick={() => setShowDynamicUserProfile(true)}>
+          <span>{shortAddress(primaryWallet.address)}</span>
+          <span className="badge bg-light-glass text-body fw-normal text-lowercase">
+            {balance == null ? '… USDC' : `$${balance.toFixed(2)} USDC · Arc`}
+          </span>
+        </button>
+        <button type="button" className="btn btn-outline-secondary w-100 rounded-4 py-2 fw-bold text-uppercase m-0" onClick={() => handleLogOut()}>
+          Log out
+        </button>
+      </div>
     )
   }
 

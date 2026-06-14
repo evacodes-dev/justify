@@ -5,7 +5,7 @@ export const ARC = {
   chainId: 5042002,
   rpc: 'https://rpc.testnet.arc.network',
   usdc: '0x3600000000000000000000000000000000000000' as `0x${string}`,
-  explorer: 'https://explorer.testnet.arc.network',
+  explorer: 'https://testnet.arcscan.app',
 }
 
 export type DemoMarket = {

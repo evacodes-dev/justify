@@ -15,17 +15,19 @@ const CCTP = {
 const transmitterAbi = parseAbi(["function receiveMessage(bytes message, bytes attestation) returns (bool)"]);
 
 export async function depositRoutes(app: FastifyInstance) {
-  // ── Blink: sign a deposit payload (ECDSA P-256 / SHA-256 over the base64url string) ──
-  app.post<{ Body: any }>("/deposit/blink/sign", async (req, reply) => {
-    const { amount, chainId, address, token, callbackScheme, version } = (req.body ?? {}) as any;
+  // Base USDC (Blink deposits land here). Used when the client sends token:"USDC".
+  const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+  async function signBlink(body: any, reply: any) {
+    const { amount, chainId, address, callbackScheme, version } = body ?? {};
+    let token = body?.token;
     if (!(Number(amount) > 0)) return reply.code(400).send({ error: "amount" });
-    if (!Number.isInteger(chainId) || chainId <= 0) return reply.code(400).send({ error: "chainId" });
     if (!/^0x[a-fA-F0-9]{40}$/.test(address ?? "")) return reply.code(400).send({ error: "address" });
-    if (!/^0x[a-fA-F0-9]{1,40}$/.test(token ?? "")) return reply.code(400).send({ error: "token" });
+    if (!/^0x[a-fA-F0-9]{40}$/.test(token ?? "")) token = BASE_USDC; // accept "USDC" label
     if (!existsSync(config.blinkPemPath)) return reply.code(501).send({ error: "blink signer not configured" });
 
     const payloadObject = {
-      amount, chainId, address, token,
+      amount, chainId: chainId ?? 8453, address, token,
       idempotencyKey: randomUUID(),
       callbackScheme: callbackScheme ?? null,
       signatureTimestamp: new Date().toISOString(),
@@ -37,7 +39,12 @@ export async function depositRoutes(app: FastifyInstance) {
     signer.end();
     const signature = signer.sign(readFileSync(config.blinkPemPath, "utf8")).toString("base64url");
     return { merchantId: config.blinkMerchantId, payload, signature, preview: payloadObject };
-  });
+  }
+
+  // ── Blink: sign a deposit payload (ECDSA P-256 / SHA-256 over the base64url string) ──
+  app.post<{ Body: any }>("/deposit/blink/sign", async (req, reply) => signBlink(req.body, reply));
+  // showcase-compatible alias used by the SPA front-end
+  app.post<{ Body: any }>("/api/sign-payment", async (req, reply) => signBlink(req.body, reply));
 
   // ── CCTP bridge: poll Circle Iris for the attestation of a Base burn tx ──
   app.post<{ Body: any }>("/deposit/bridge/attest", async (req, reply) => {
