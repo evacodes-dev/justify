@@ -239,7 +239,7 @@ export async function compatRoutes(app: FastifyInstance) {
   });
 
   // reasoning feed (GET) + run tick (POST)
-  app.get("/api/agent/tick", async () => ({ feed: db.feed.all().sort((a, b) => b.ts - a.ts).slice(0, 100).map(toFeedPost) }));
+  app.get("/api/agent/tick", async () => ({ feed: db.feed.all().filter((f) => f.kind === "agent").sort((a, b) => b.ts - a.ts).slice(0, 100).map(toFeedPost) }));
   app.post<{ Body: any }>("/api/agent/tick", async (req) => {
     const { agentId } = (req.body ?? {}) as any;
     const id = agentId ?? db.agents.all().find(isPublicAgent)?.id;
