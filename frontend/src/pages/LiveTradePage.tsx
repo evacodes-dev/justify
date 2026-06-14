@@ -64,7 +64,7 @@ export default function LiveTradePage() {
 
   return (
     <>
-      <main className="col col-xl-8 order-xl-2 col-lg-12 order-lg-1 col-md-12 col-sm-12 col-12 border-start border-end">
+      <main className="col col-xl-6 order-xl-2 col-lg-12 order-lg-1 col-md-12 col-sm-12 col-12 border-start border-end">
         <div className="d-flex align-items-center pt-3 px-lg-3">
           <Link to="/market" className="material-icons text-white text-decoration-none m-none me-3">arrow_back</Link>
           <p className="ms-2 mb-0 fw-bold text-body fs-6">Market #{demo.id}</p>
