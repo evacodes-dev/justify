@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useArcMarket } from '../../hooks/useArcMarket'
 import { useWallet } from '../../hooks/useWallet'
 import { useUi } from '../layout/UiContext'
+import { getCanBet, type CanBet } from '../../lib/api'
 
 export interface LiveTrade {
   address: `0x${string}`
   question: string
+  marketId?: number | string
 }
 
 interface TradeBoxProps {
@@ -31,6 +33,14 @@ export default function TradeBox({ yesOption, noOption, live }: TradeBoxProps) {
   const { state } = useArcMarket(live?.address, address)
   const { openTrade } = useUi()
   const resolved = !!state?.resolved
+
+  // country gate: check eligibility for restricted markets
+  const [canBet, setCanBet] = useState<CanBet | null>(null)
+  useEffect(() => {
+    if (live?.marketId == null) { setCanBet(null); return }
+    getCanBet(live.marketId, address).then(setCanBet).catch(() => setCanBet(null))
+  }, [live?.marketId, address])
+  const blocked = canBet?.restricted && !canBet.allowed
 
   const addAmount = (label: string) => {
     const digits = label.replace(/[^0-9]/g, '')
@@ -87,8 +97,14 @@ export default function TradeBox({ yesOption, noOption, live }: TradeBoxProps) {
         </div>
       </div>
 
-      <button className="trade-button" onClick={live ? onTrade : undefined} disabled={live && resolved}>
-        {live && resolved ? 'Market resolved' : 'Trade'}
+      {canBet?.restricted && (
+        <div className={`small mb-2 ${blocked ? 'text-warning' : 'text-success'}`}>
+          Country-restricted: {(canBet.countries ?? []).join(', ')}
+          {blocked && <div className="text-warning mt-1">{canBet.reason}</div>}
+        </div>
+      )}
+      <button className="trade-button" onClick={live && !blocked ? onTrade : undefined} disabled={(live && resolved) || blocked}>
+        {live && resolved ? 'Market resolved' : blocked ? 'Not eligible (country-gated)' : 'Trade'}
       </button>
     </div>
   )

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { Market } from '../../types'
-import { flagOf, nameOf } from '../../lib/countries'
+import { nameOf } from '../../lib/countries'
 import ChanceArc from './ChanceArc'
 
 type Side = 'yes' | 'no'
@@ -39,8 +39,8 @@ export default function MarketCard({ market }: { market: Market }) {
                   <span className="market-volume">{market.volume}</span>
                   <span className="market-time">{market.endTime}</span>
                   {market.countries && market.countries.length > 0 && (
-                    <span className="market-countries" title={market.countries.map(nameOf).join(', ')}>
-                      {market.countries.map((c) => flagOf(c)).join(' ')}
+                    <span className="market-countries">
+                      {market.countries.map(nameOf).join(', ')}
                     </span>
                   )}
                 </div>

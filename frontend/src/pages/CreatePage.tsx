@@ -15,6 +15,7 @@ export default function CreatePage() {
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('crypto')
   const [countries, setCountries] = useState<string[]>([])
+  const [restricted, setRestricted] = useState(false)
   const [closeDays, setCloseDays] = useState(14)
 
   const toggleCountry = (code: string) =>
@@ -33,7 +34,7 @@ export default function CreatePage() {
 
     setPhase('creating'); setErr('')
     try {
-      const r = await createMarket({ question: question.trim(), description: description.trim(), category, closeTimeDays: closeDays, creator: address, countries: category === 'politics' ? countries : [] })
+      const r = await createMarket({ question: question.trim(), description: description.trim(), category, closeTimeDays: closeDays, creator: address, countries: category === 'politics' ? countries : [], restricted: category === 'politics' && restricted })
       setResult({ id: r.id, address: r.address, explorer: r.explorer })
       setPhase('done')
       setQuestion(''); setDescription('')
@@ -109,7 +110,7 @@ export default function CreatePage() {
                             onChange={() => toggleCountry(c.code)}
                           />
                           <label className="form-check-label text-body small" htmlFor={`country-${c.code}`}>
-                            {c.flag} {c.name}
+                            {c.name}
                           </label>
                         </div>
                       ))}
@@ -117,6 +118,14 @@ export default function CreatePage() {
                     <p className="text-muted small mt-2 mb-0">
                       {countries.length ? `Selected: ${countries.join(', ')}` : 'Optional — pick the countries this market is about.'}
                     </p>
+                    {countries.length > 0 && (
+                      <div className="form-check form-switch mt-2">
+                        <input className="form-check-input" type="checkbox" id="restrict" checked={restricted} onChange={(e) => setRestricted(e.target.checked)} />
+                        <label className="form-check-label text-body small" htmlFor="restrict">
+                          Only verified humans from these countries can bet (World ID country-gate)
+                        </label>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -128,7 +137,7 @@ export default function CreatePage() {
 
                 {phase === 'done' && result && (
                   <div className="alert alert-success mt-3 mb-0 rounded-4" role="alert">
-                    ✅ Market #{result.id} deployed on Arc.{' '}
+                    Market #{result.id} deployed on Arc.{' '}
                     <a href={result.explorer + '/address/' + result.address} target="_blank" rel="noreferrer" className="fw-bold">View on Arcscan ↗</a>
                     <div className="small text-break mt-1">{result.address}</div>
                   </div>

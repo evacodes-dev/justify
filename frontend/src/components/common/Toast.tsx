@@ -41,7 +41,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             style={{ borderLeft: `4px solid ${t.kind === 'success' ? '#3fb950' : t.kind === 'error' ? '#e5484d' : '#0d6efd'}` }}
           >
             <div className="d-flex align-items-start">
-              <span className="me-2">{t.kind === 'success' ? '✅' : t.kind === 'error' ? '⚠️' : 'ℹ️'}</span>
+              <span className="material-icons me-2" style={{ fontSize: 18, color: t.kind === 'success' ? '#3fb950' : t.kind === 'error' ? '#e5484d' : '#0d6efd' }}>{t.kind === 'success' ? 'check_circle' : t.kind === 'error' ? 'warning' : 'info'}</span>
               <div className="flex-grow-1 small" style={{ wordBreak: 'break-word' }}>
                 {t.message}
                 {t.href && (

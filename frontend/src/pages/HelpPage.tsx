@@ -37,7 +37,7 @@ export default function HelpPage() {
             <header className="profile d-flex align-items-center">
               <img alt="#" src="/img/images.jpeg" className="rounded-circle me-3" />
               <div>
-                <span className="text-muted text_short">WELCOME 👋</span>
+                <span className="text-muted text_short">WELCOME</span>
                 <h4 className="mb-0 text-white">
                   <span className="fw-bold">@founder</span>
                 </h4>

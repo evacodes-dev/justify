@@ -21,6 +21,7 @@ export type DemoMarket = {
   noLabel?: string
   category?: string
   countries?: string[] // ISO-2 codes (politics markets)
+  restricted?: boolean // betting limited to `countries`
 }
 
 // Seed FPMM markets (Factory ids 0..2). New markets created via /api/create-market
@@ -28,7 +29,7 @@ export type DemoMarket = {
 export const DEMO_MARKETS: DemoMarket[] = [
   { id: 0, address: '0xccc94f54f25ebfeE04AEeEdbFd4F1e39221526E6', question: 'Will ETH close above $5,000 on 2026-07-01?', emoji: 'Ξ', gradient: 'linear-gradient(135deg,#627eea,#1b1f3b)', author: 'justify', tags: '#crypto #eth', thumb: '/img/ETHfullsize.webp' },
   { id: 2, address: '0x82329d3d14496CEfcBc46c47FF848736FeaC262a', question: 'Will BTC close above $200,000 in 2026?', emoji: '₿', gradient: 'linear-gradient(135deg,#f7931a,#7a3e00)', author: 'justify', tags: '#crypto #btc', thumb: '/img/will-microstrategy-purchase-bitcoin-july-1-7-mzoE5TYk_cCI.webp' },
-  { id: 1, address: '0x93773f04Bc513d9eeEE476953c1c83DB76610e62', question: 'Will the Fed cut rates at the July 2026 meeting?', emoji: '🏦', gradient: 'linear-gradient(135deg,#455a64,#15202b)', author: 'justify', tags: '#macro #fed', thumb: '/img/post1.png' },
+  { id: 1, address: '0x93773f04Bc513d9eeEE476953c1c83DB76610e62', question: 'Will the Fed cut rates at the July 2026 meeting?', emoji: '%', gradient: 'linear-gradient(135deg,#455a64,#15202b)', author: 'justify', tags: '#macro #fed', thumb: '/img/post1.png' },
 ]
 
 // Map a real on-chain market (+ optional live state) into the existing justify-latest
@@ -73,21 +74,23 @@ function derive(question: string, category: string): Pick<DemoMarket, 'emoji' | 
   if (/\beth|ethereum\b/.test(q)) return { emoji: 'Ξ', gradient: 'linear-gradient(135deg,#627eea,#1b1f3b)', thumb: '/img/ETHfullsize.webp', tags: '#crypto #eth' }
   if (/\bbtc|bitcoin\b/.test(q)) return { emoji: '₿', gradient: 'linear-gradient(135deg,#f7931a,#7a3e00)', thumb: '/img/will-microstrategy-purchase-bitcoin-july-1-7-mzoE5TYk_cCI.webp', tags: '#crypto #btc' }
   if (/\bsol|solana\b/.test(q)) return { emoji: '◎', gradient: 'linear-gradient(135deg,#14f195,#1b1f3b)', thumb: '/img/post1.png', tags: '#crypto #sol' }
-  if (/\bfed|rate|fomc|inflation|cpi\b/.test(q)) return { emoji: '🏦', gradient: 'linear-gradient(135deg,#455a64,#15202b)', thumb: '/img/post1.png', tags: '#macro #fed' }
-  if (/\belect|president|vote|poll\b/.test(q)) return { emoji: '🗳️', gradient: 'linear-gradient(135deg,#8e24aa,#311b92)', thumb: '/img/post1.png', tags: '#politics' }
-  if (/\bgame|win|cup|match|score|sport\b/.test(q)) return { emoji: '🏆', gradient: 'linear-gradient(135deg,#2e7d32,#1b5e20)', thumb: '/img/post1.png', tags: '#sports' }
-  return { emoji: '❓', gradient: 'linear-gradient(135deg,#3949ab,#1a237e)', thumb: '/img/post1.png', tags: category ? `#${category}` : '#market' }
+  if (/\bfed|rate|fomc|inflation|cpi\b/.test(q)) return { emoji: '%', gradient: 'linear-gradient(135deg,#455a64,#15202b)', thumb: '/img/post1.png', tags: '#macro #fed' }
+  if (/\belect|president|vote|poll\b/.test(q)) return { emoji: '▣', gradient: 'linear-gradient(135deg,#8e24aa,#311b92)', thumb: '/img/post1.png', tags: '#politics' }
+  if (/\bgame|win|cup|match|score|sport\b/.test(q)) return { emoji: '◈', gradient: 'linear-gradient(135deg,#2e7d32,#1b5e20)', thumb: '/img/post1.png', tags: '#sports' }
+  return { emoji: '◆', gradient: 'linear-gradient(135deg,#3949ab,#1a237e)', thumb: '/img/post1.png', tags: category ? `#${category}` : '#market' }
 }
 
 export function apiMarketToDemo(m: ApiMarket): DemoMarket {
   let category = 'general'
   let countries: string[] = []
+  let restricted = false
   try {
     const meta = JSON.parse(m.metadataURI || '{}')
     category = meta.category || 'general'
     countries = Array.isArray(meta.countries) ? meta.countries.map((c: any) => String(c)) : []
+    restricted = !!meta.restricted
   } catch { /* legacy uri */ }
-  return { id: m.id, address: m.address, question: m.question, author: m.creatorName || 'justify', category, countries, ...derive(m.question, category) }
+  return { id: m.id, address: m.address, question: m.question, author: m.creatorName || 'justify', category, countries, restricted, ...derive(m.question, category) }
 }
 
 export async function fetchMarkets(): Promise<{ demo: DemoMarket; api: ApiMarket }[]> {

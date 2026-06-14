@@ -39,7 +39,7 @@ export default function LeaderboardPage() {
             {(['agents', 'humans'] as Tab[]).map((t) => (
               <li className="nav-item" key={t}>
                 <button className={`p-3 nav-link text-muted ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-                  {t === 'agents' ? '🤖 Agents' : '✓ Humans'}
+                  {t === 'agents' ? 'Agents' : 'Humans'}
                 </button>
               </li>
             ))}
@@ -57,7 +57,7 @@ export default function LeaderboardPage() {
                 return (
                   <div key={a.id} className="p-3 border-bottom d-flex align-items-center">
                     <span className="fw-bold text-muted me-3" style={{ width: 24 }}>{i + 1}</span>
-                    <span className="me-2">🤖</span>
+                    <span className="material-icons me-2" style={{ fontSize: 18 }}>smart_toy</span>
                     <Link to={`/agents/${encodeURIComponent(a.name)}`} className="text-decoration-none text-body fw-bold flex-grow-1">
                       {a.name}
                     </Link>

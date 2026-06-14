@@ -7,6 +7,7 @@ import { db, kv, type AgentRow, type FeedItem, type Approval } from "../store.js
 import { signRequest } from "@worldcoin/idkit-core/signing";
 import { createAgentInternal } from "./agents.js";
 import { tickAgent, executeBuy } from "../agent-loop.js";
+import { hasFeed, readChainlinkPrice } from "../chainlink.js";
 
 // Compatibility layer: serves the `/api/*` contract the SPA front-end already codes
 // against (showcase shapes), backed by the REAL FPMM contracts + agent loop. Lets the
@@ -92,7 +93,7 @@ export async function compatRoutes(app: FastifyInstance) {
     return { verified: !!u?.verified };
   });
   app.post<{ Body: any }>("/api/verify-proof", async (req, reply) => {
-    const { rp_id, idkitResponse, walletAddress, name } = (req.body ?? {}) as any;
+    const { rp_id, idkitResponse, walletAddress, name, country } = (req.body ?? {}) as any;
     if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress ?? "")) return reply.code(400).send({ error: "bad walletAddress" });
     // dev bypass (no proof) is allowed unless ALLOW_DEV_VERIFY=false — flip that env to require real World ID
     if (!idkitResponse && process.env.ALLOW_DEV_VERIFY === "false")
@@ -125,9 +126,37 @@ export async function compatRoutes(app: FastifyInstance) {
       id: walletAddress.toLowerCase(), address: walletAddress,
       name: (name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : "") || existing?.name || walletAddress.slice(0, 8).toLowerCase(),
       verified: true, humanId: nullifier ?? existing?.humanId ?? walletAddress.toLowerCase(),
+      country: (country ? String(country).slice(0, 3).toUpperCase() : existing?.country),
       createdAt: existing?.createdAt ?? Date.now(), arcTx,
     });
     return { success: true, alreadyVerified: !!existing?.verified };
+  });
+
+  // parse a market's flexible metadata (countries + restriction)
+  const marketMeta = (m: { metadataURI?: string }): { restricted: boolean; countries: string[] } => {
+    try { const j = JSON.parse(m.metadataURI || "{}"); return { restricted: !!j.restricted, countries: Array.isArray(j.countries) ? j.countries : [] }; }
+    catch { return { restricted: false, countries: [] }; }
+  };
+
+  // country gate: can the connected user bet on this market?
+  app.get<{ Params: { id: string }; Querystring: { address?: string } }>("/api/can-bet/:id", async (req) => {
+    const m = db.markets.get(Number(req.params.id));
+    if (!m) return { allowed: false, reason: "market not found" };
+    const meta = marketMeta(m);
+    if (!meta.restricted || meta.countries.length === 0) return { allowed: true, restricted: false };
+    const u = db.users.find((x) => x.address.toLowerCase() === String(req.query.address ?? "").toLowerCase());
+    const country = u?.country;
+    const allowed = !!country && meta.countries.includes(country);
+    return { allowed, restricted: true, countries: meta.countries, userCountry: country ?? null, reason: allowed ? "" : (country ? `Restricted market — your country (${country}) is not eligible.` : "Set your country in Settings to bet on country-restricted markets.") };
+  });
+
+  // live Chainlink Data Feed price for an asset — verifiable on Etherscan
+  app.get<{ Params: { asset: string } }>("/api/chainlink/:asset", async (req, reply) => {
+    const asset = String(req.params.asset).toUpperCase();
+    if (!hasFeed(asset)) return reply.code(404).send({ error: "no feed" });
+    const p = await readChainlinkPrice(asset).catch(() => null);
+    if (!p) return reply.code(502).send({ error: "feed read failed" });
+    return { asset, price: p.price, feed: p.feed, updatedAt: p.updatedAt, network: "Ethereum Sepolia", explorer: `https://sepolia.etherscan.io/address/${p.feed}#readContract` };
   });
 
   // creators (real users) for the feed / people lists
@@ -151,7 +180,7 @@ export async function compatRoutes(app: FastifyInstance) {
     const myIds = Object.entries(subs).filter(([, a]) => a.toLowerCase() === u.address.toLowerCase()).map(([id]) => Number(id));
     const markets = db.markets.all().filter((m) => myIds.includes(m.id)).map((m) => ({ id: m.id, question: m.question, priceYes: m.priceYes, volume: m.volume, resolved: m.resolved }));
     return {
-      user: { name: u.name, address: u.address, bio: u.bio ?? "", avatar: u.avatar || "/img/images.jpeg", verified: u.verified, createdAt: u.createdAt },
+      user: { name: u.name, address: u.address, bio: u.bio ?? "", avatar: u.avatar || "/img/images.jpeg", verified: u.verified, country: u.country ?? null, createdAt: u.createdAt },
       markets,
     };
   });
@@ -164,26 +193,27 @@ export async function compatRoutes(app: FastifyInstance) {
 
   // update profile (settings)
   app.post<{ Body: any }>("/api/profile", async (req, reply) => {
-    const { address, name, avatar, bio } = (req.body ?? {}) as any;
+    const { address, name, avatar, bio, country } = (req.body ?? {}) as any;
     if (!/^0x[a-fA-F0-9]{40}$/.test(address ?? "")) return reply.code(400).send({ error: "bad address" });
     const u = db.users.find((x) => x.address.toLowerCase() === address.toLowerCase());
     if (!u) return reply.code(404).send({ error: "user not found (verify first)" });
     const cleanName = name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : u.name;
     if (cleanName !== u.name && db.users.find((x) => x.name === cleanName)) return reply.code(409).send({ error: "name taken" });
-    db.users.patch(u.id, { name: cleanName, avatar: avatar ?? u.avatar, bio: bio ?? u.bio });
+    db.users.patch(u.id, { name: cleanName, avatar: avatar ?? u.avatar, bio: bio ?? u.bio, country: country ? String(country).slice(0, 3).toUpperCase() : u.country });
     return { ok: true, user: db.users.get(u.id) };
   });
 
   // create a market (backend is a registered creator; funds the initial liquidity)
   app.post<{ Body: any }>("/api/create-market", async (req, reply) => {
-    const { question, description, category, image, closeTimeDays, creator, countries } = (req.body ?? {}) as any;
+    const { question, description, category, image, closeTimeDays, creator, countries, restricted } = (req.body ?? {}) as any;
     if (!question || String(question).length < 6) return reply.code(400).send({ error: "question too short" });
     const L = toUsdc(0.5); // small initial liquidity to stretch the faucet
     const days = Math.max(1, Math.min(365, Number(closeTimeDays) || 14));
     const closeTime = BigInt(Math.floor(Date.now() / 1000) + days * 86400);
-    // country tags (e.g. ["US","GB"]) ride in the flexible metadata JSON — no schema change
+    // country tags (e.g. ["US","GB"]) + restriction ride in the flexible metadata JSON — no schema change
     const countryTags = Array.isArray(countries) ? countries.map((c: any) => String(c).slice(0, 3).toUpperCase()).filter(Boolean).slice(0, 12) : [];
-    const metadataURI = JSON.stringify({ category: category || "general", description: description || "", image: image || "", countries: countryTags });
+    const isRestricted = !!restricted && countryTags.length > 0;
+    const metadataURI = JSON.stringify({ category: category || "general", description: description || "", image: image || "", countries: countryTags, restricted: isRestricted });
     try {
       const deployTx = await backendSigner().run(async ({ wallet, account }) => {
         const allowance = (await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, config.factory] })) as bigint;

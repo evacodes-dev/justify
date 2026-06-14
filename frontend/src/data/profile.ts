@@ -169,7 +169,7 @@ export const mentionPosts: ProfilePost[] = [
     commentsOpenModal: true,
     plainComposer: true,
     paragraphs: [
-      { html: 'Welcome to the Vogel family 🙂', className: 'mb-3 text-primary' },
+      { html: 'Welcome to the Vogel family', className: 'mb-3 text-primary' },
       { html: 'Happy Vogel to you!' },
       { html: hashtagsHtml, className: 'mb-2' },
     ],

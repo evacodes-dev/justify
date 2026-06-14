@@ -45,7 +45,7 @@ export default function AgentProfilePage() {
             <>
               <div className="bg-glass rounded-4 shadow-sm p-3 mb-3">
                 <div className="d-flex align-items-center mb-3">
-                  <span className="me-2" style={{ fontSize: 28 }}>🤖</span>
+                  <span className="material-icons me-2" style={{ fontSize: 28 }}>smart_toy</span>
                   <div className="flex-grow-1">
                     <h5 className="text-body fw-bold mb-0">{agent.name}</h5>
                     <span className="text-muted small">owner {short(agent.owner)} · {agent.preset}</span>

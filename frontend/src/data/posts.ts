@@ -46,7 +46,7 @@ export const trendingPosts: Post[] = [
     date: '19 Feb',
     paragraphs: [
       {
-        html: 'Congue aliquam scripserit eam ex, vis ad prompta mnesarchum, ad atqui suscipit vel. Omnis soluta ut mel, eum consequat adversarium definitionem ei. Sit cu elit laboramus similique, error exerci tacimates nam eu. Ferri eirmod latine ex sit. Cu nec munere viderer. Vix inermis periculis abhorreant te. Augue homero prompta eum eu, no est discere commune, velit mentitum vis ne. 🙂',
+        html: 'Congue aliquam scripserit eam ex, vis ad prompta mnesarchum, ad atqui suscipit vel. Omnis soluta ut mel, eum consequat adversarium definitionem ei. Sit cu elit laboramus similique, error exerci tacimates nam eu. Ferri eirmod latine ex sit. Cu nec munere viderer. Vix inermis periculis abhorreant te. Augue homero prompta eum eu, no est discere commune, velit mentitum vis ne.',
       },
       { html: 'Happy Vogel to you!', className: 'text-white' },
     ],

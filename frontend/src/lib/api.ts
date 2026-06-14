@@ -31,7 +31,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 // POST /api/create-market — deploys a real FPMM market on Arc.
 export function createMarket(input: {
-  question: string; description?: string; category?: string; closeTimeDays?: number; creator?: string; countries?: string[]
+  question: string; description?: string; category?: string; closeTimeDays?: number; creator?: string; countries?: string[]; restricted?: boolean
 }) {
   return apiFetch<{ address: string; question: string; id: number; explorer: string; deployTx: string }>(
     '/api/create-market',
@@ -39,7 +39,15 @@ export function createMarket(input: {
   )
 }
 
-export interface PublicUser { name: string; address: string; bio?: string; avatar?: string; verified: boolean; createdAt: number }
+export interface PublicUser { name: string; address: string; bio?: string; avatar?: string; verified: boolean; country?: string | null; createdAt: number }
+export interface CanBet { allowed: boolean; restricted?: boolean; countries?: string[]; userCountry?: string | null; reason?: string }
+export function getCanBet(id: number | string, address?: string) {
+  return apiFetch<CanBet>(`/api/can-bet/${id}${address ? `?address=${address}` : ''}`)
+}
+export interface ChainlinkPrice { asset: string; price: number; feed: string; updatedAt: number; network: string; explorer: string }
+export function getChainlinkPrice(asset: string) {
+  return apiFetch<ChainlinkPrice>(`/api/chainlink/${asset}`)
+}
 export interface UserMarket { id: number; question: string; priceYes: number; volume: number; resolved: boolean }
 export function getUser(key: string) {
   return apiFetch<{ user: PublicUser; markets: UserMarket[] }>(`/api/user/${key}`)
@@ -47,9 +55,9 @@ export function getUser(key: string) {
 
 // profile (settings)
 export function getMe(address: string) {
-  return apiFetch<{ user: { name: string; address: string; bio?: string; avatar?: string; verified: boolean } | null }>(`/api/me?address=${address}`)
+  return apiFetch<{ user: { name: string; address: string; bio?: string; avatar?: string; verified: boolean; country?: string | null } | null }>(`/api/me?address=${address}`)
 }
-export function updateProfile(input: { address: string; name?: string; bio?: string; avatar?: string }) {
+export function updateProfile(input: { address: string; name?: string; bio?: string; avatar?: string; country?: string }) {
   return apiFetch<{ ok: boolean; user: any }>('/api/profile', { method: 'POST', body: JSON.stringify(input) })
 }
 

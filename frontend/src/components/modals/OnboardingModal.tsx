@@ -104,7 +104,7 @@ export default function OnboardingModal() {
 
       {step === 0 && (
         <div className="text-center">
-          <div style={{ fontSize: 40 }} className="mb-2">🛡️</div>
+          <div className="mb-2"><span className="material-icons text-primary" style={{ fontSize: 44 }}>verified_user</span></div>
           <p className="text-body fw-bold mb-1">Verify you're human</p>
           <p className="text-muted small mb-3">World ID 4.0 — one human, one voice. Uses the simulator on dev.</p>
           {!WORLD_APP_ID && <p className="text-warning small mb-2">VITE_WORLD_APP_ID not set.</p>}
@@ -144,7 +144,7 @@ export default function OnboardingModal() {
 
       {step === 2 && (
         <div className="text-center">
-          <div style={{ fontSize: 40 }} className="mb-2">🎉</div>
+          <div className="mb-2"><span className="material-icons text-success" style={{ fontSize: 44 }}>check_circle</span></div>
           <p className="text-body fw-bold mb-1">You're verified</p>
           <p className="text-muted small mb-3">You can now create markets and trade as a verified human.</p>
           <button className="btn btn-primary rounded-5 w-100 py-3 fw-bold" onClick={closeModal}>Done</button>

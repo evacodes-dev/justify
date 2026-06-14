@@ -29,7 +29,7 @@ function AgentCard({ agent, isOwner, onPublish }: {
   return (
     <div className="bg-glass rounded-4 shadow-sm p-3 mb-3">
       <div className="d-flex align-items-center mb-2">
-        <span className="me-2" style={{ fontSize: 20 }}>🤖</span>
+        <span className="material-icons me-2" style={{ fontSize: 20 }}>smart_toy</span>
         <Link to={`/agents/${encodeURIComponent(agent.name)}`} className="text-decoration-none text-body fw-bold flex-grow-1">
           {agent.name}
         </Link>

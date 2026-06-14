@@ -117,7 +117,7 @@ export default function DepositPage() {
             {(error || bridgeErr) && <p className="text-danger small mt-2 mb-0">{bridgeErr || displayMessage || 'Failed.'}</p>}
             {bridge === 'done' && (
               <p className="text-success small mt-2 mb-0">
-                ✅ USDC bridged to Arc{arcTx ? <> · <a href={`${ARC_EXPLORER}/tx/${arcTx}`} target="_blank" rel="noreferrer" className="fw-bold">view tx ↗</a></> : ''}
+                USDC bridged to Arc{arcTx ? <> · <a href={`${ARC_EXPLORER}/tx/${arcTx}`} target="_blank" rel="noreferrer" className="fw-bold">view tx ↗</a></> : ''}
               </p>
             )}
           </div>

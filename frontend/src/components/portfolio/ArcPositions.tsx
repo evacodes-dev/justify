@@ -65,7 +65,7 @@ function PositionCard({ row, onClaimed }: { row: Row; onClaimed: () => void }) {
       )}
       {phase === 'done' && (
         <p className="mt-2 mb-0 small text-success">
-          ✅ Claimed ·{' '}
+          Claimed ·{' '}
           <a href={txUrl(hash)} target="_blank" rel="noreferrer" className="text-success">view tx ↗</a>
         </p>
       )}

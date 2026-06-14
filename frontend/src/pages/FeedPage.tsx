@@ -7,14 +7,14 @@ import ReasoningFeed from '../components/feed/ReasoningFeed'
 import { useMarkets, type MarketRow } from '../hooks/useMarkets'
 import { useCreators } from '../hooks/useCreators'
 import { toUiMarket } from '../lib/markets'
-import { flagOf, nameOf } from '../lib/countries'
+import { nameOf } from '../lib/countries'
 import type { Account } from '../types'
 
 type Tab = 'feed' | 'agents' | 'people' | 'trending'
 
 const tabs: { id: Tab; label: string }[] = [
   { id: 'feed', label: 'Markets' },
-  { id: 'agents', label: '🤖 Agents' },
+  { id: 'agents', label: 'Agents' },
   { id: 'people', label: 'Creators' },
   { id: 'trending', label: 'Trending' },
 ]
@@ -101,7 +101,7 @@ export default function FeedPage() {
                       className={`btn btn-sm rounded-pill ${!countryFilter ? 'btn-primary' : 'btn-outline-secondary text-body'}`}
                       onClick={() => setCountryFilter(null)}
                     >
-                      🌍 All
+                      All
                     </button>
                     {presentCountries.map((code) => (
                       <button
@@ -111,7 +111,7 @@ export default function FeedPage() {
                         className={`btn btn-sm rounded-pill ${countryFilter === code ? 'btn-primary' : 'btn-outline-secondary text-body'}`}
                         onClick={() => setCountryFilter((cur) => (cur === code ? null : code))}
                       >
-                        {flagOf(code)} {code}
+                        {nameOf(code)}
                       </button>
                     ))}
                   </div>
@@ -121,7 +121,7 @@ export default function FeedPage() {
                 ) : (
                   <MarketGrid
                     rows={visibleMarkets}
-                    empty={countryFilter ? `No markets for ${flagOf(countryFilter)} ${nameOf(countryFilter)} yet.` : undefined}
+                    empty={countryFilter ? `No markets for ${nameOf(countryFilter)} yet.` : undefined}
                   />
                 )}
               </div>

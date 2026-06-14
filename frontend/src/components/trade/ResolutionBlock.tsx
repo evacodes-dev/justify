@@ -4,6 +4,7 @@ import { readPosition, claimMarket, txUrl } from '../../lib/arc'
 import { getResolution, type Resolution } from '../../lib/api'
 import { useWallet } from '../../hooks/useWallet'
 import { useToast } from '../common/Toast'
+import ChainlinkBadge from '../market/ChainlinkBadge'
 
 type Pos = Awaited<ReturnType<typeof readPosition>>
 
@@ -58,9 +59,9 @@ export default function ResolutionBlock({ market }: { market: DemoMarket }) {
         <div className="d-flex align-items-center mb-2 gap-2 flex-wrap">
           <h6 className="fw-bold text-body mb-0 flex-grow-1">Resolution</h6>
           {resolution?.oracle === 'chainlink' ? (
-            <span className="badge" style={{ background: '#375bd2' }}>🔗 Chainlink Data Feed</span>
+            <span className="badge" style={{ background: '#375bd2' }}>Chainlink Data Feed</span>
           ) : resolution?.oracle === 'claude' ? (
-            <span className="badge bg-secondary">🤖 AI oracle (Claude)</span>
+            <span className="badge bg-secondary">AI oracle (Claude)</span>
           ) : null}
           <span className={`badge ${wonSide === 'YES' ? 'bg-success' : 'bg-danger'}`}>Resolved · {wonSide}</span>
         </div>
@@ -69,6 +70,7 @@ export default function ResolutionBlock({ market }: { market: DemoMarket }) {
         ) : (
           <p className="text-muted small mb-2">Outcome settled on-chain.</p>
         )}
+        {resolution?.oracle === 'chainlink' && <div className="mb-2"><ChainlinkBadge question={market.question} /></div>}
         <div className="d-flex align-items-center justify-content-between small">
           {resolution?.tx ? (
             <a href={txUrl(resolution.tx)} target="_blank" rel="noreferrer" className="text-primary text-decoration-none">

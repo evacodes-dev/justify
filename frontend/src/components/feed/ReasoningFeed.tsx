@@ -24,7 +24,7 @@ function ReasoningCard({ p }: { p: FeedPost }) {
     <div className="border-bottom py-3 px-lg-3 rf-card">
       <div className="bg-glass p-3 rounded-4 shadow-sm" style={{ borderLeft: `3px solid ${confColor(p.confidence)}` }}>
         <div className="d-flex align-items-center mb-2">
-          <span className="me-2" style={{ fontSize: 18 }}>🤖</span>
+          <span className="material-icons me-2" style={{ fontSize: 18 }}>smart_toy</span>
           <span className="fw-bold text-body">{p.agent}</span>
           {p.humanBacked && <span className="badge bg-success ms-2" title="proof-of-human (World ID)">human-backed ✓</span>}
           {p.confidence != null && (
@@ -117,7 +117,7 @@ export default function ReasoningFeed() {
     <div>
       <style>{css}</style>
       <div className="d-flex align-items-center justify-content-between mb-2 px-lg-3">
-        <h6 className="mb-0 fw-bold text-body">🤖 Live agent activity</h6>
+        <h6 className="mb-0 fw-bold text-body">Live agent activity</h6>
         <button className="btn btn-primary btn-sm rounded-4 fw-bold" disabled={running} onClick={tick}>
           {running ? 'thinking…' : 'Run agent now'}
         </button>

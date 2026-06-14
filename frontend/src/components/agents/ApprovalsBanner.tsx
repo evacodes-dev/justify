@@ -53,7 +53,7 @@ export default function ApprovalsBanner() {
       style={{ position: 'fixed', left: 16, right: 16, bottom: 16, zIndex: 1075, maxWidth: 520, margin: '0 auto' }}
     >
       <div className="d-flex align-items-start">
-        <span className="me-2" style={{ fontSize: 20 }}>🤖</span>
+        <span className="material-icons me-2" style={{ fontSize: 20 }}>smart_toy</span>
         <div className="flex-grow-1">
           <p className="text-body fw-bold mb-1">
             {a.agent} wants to bet ${a.amountUsdc} on {a.side}
