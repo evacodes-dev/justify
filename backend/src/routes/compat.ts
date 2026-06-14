@@ -59,7 +59,7 @@ export async function compatRoutes(app: FastifyInstance) {
   app.get("/api/markets", async () => ({
     markets: db.markets.all().sort((a, b) => b.createdAt - a.createdAt).map((m) => ({
       id: m.id, address: m.address, question: m.question, metadataURI: m.metadataURI,
-      priceYes: m.priceYes, volume: m.volume, resolved: m.resolved, outcome: m.outcome, closeTime: m.closeTime,
+      priceYes: m.priceYes, volume: m.volume, resolved: m.resolved, outcome: m.outcome, closeTime: m.closeTime, oracle: m.oracle,
       creator: m.creator, creatorName: creatorNameOf(m.id, m.creator),
     })),
   }));
@@ -288,6 +288,6 @@ export async function compatRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/api/resolution/:id", async (req, reply) => {
     const m = db.markets.get(Number(req.params.id));
     if (!m || !m.resolved) return reply.code(404).send({ error: "not resolved" });
-    return { id: m.id, verdict: m.outcome === 1 ? "YES" : m.outcome === 0 ? "NO" : "INVALID", rationale: m.reason ?? "", model: "claude-sonnet-4-6", at: new Date(m.createdAt).toISOString().slice(0, 10) };
+    return { id: m.id, verdict: m.outcome === 1 ? "YES" : m.outcome === 0 ? "NO" : "INVALID", rationale: m.reason ?? "", oracle: m.oracle ?? "claude", model: m.oracle === "chainlink" ? "Chainlink Data Feed" : "claude-sonnet-4-6", at: new Date(m.createdAt).toISOString().slice(0, 10) };
   });
 }

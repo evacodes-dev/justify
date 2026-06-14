@@ -55,8 +55,13 @@ export default function ResolutionBlock({ market }: { market: DemoMarket }) {
   return (
     <div className="px-lg-3 pb-3">
       <div className="bg-glass rounded-4 shadow-sm p-3">
-        <div className="d-flex align-items-center mb-2">
+        <div className="d-flex align-items-center mb-2 gap-2 flex-wrap">
           <h6 className="fw-bold text-body mb-0 flex-grow-1">Resolution</h6>
+          {resolution?.oracle === 'chainlink' ? (
+            <span className="badge" style={{ background: '#375bd2' }}>🔗 Chainlink Data Feed</span>
+          ) : resolution?.oracle === 'claude' ? (
+            <span className="badge bg-secondary">🤖 AI oracle (Claude)</span>
+          ) : null}
           <span className={`badge ${wonSide === 'YES' ? 'bg-success' : 'bg-danger'}`}>Resolved · {wonSide}</span>
         </div>
         {resolution?.rationale ? (

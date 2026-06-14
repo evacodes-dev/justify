@@ -177,6 +177,7 @@ export interface Resolution {
   ethPrice?: number
   tx?: string
   model?: string
+  oracle?: 'chainlink' | 'claude'
   at?: string
 }
 
