@@ -47,7 +47,9 @@ export async function createAgentInternal(input: {
   const agent = db.agents.put({
     id: account.address.slice(2, 10), name, ownerHumanId: hid, ownerAddress: input.ownerAddress.toLowerCase(),
     address: account.address, pk, strategy, preset, budgetUsdc, spentUsdc: 0,
-    active: true, humanBacked: false, createdAt: Date.now(), wins: 0, losses: 0,
+    // Created as a draft: not world-visible and not trading until the owner confirms
+    // with World ID (POST /api/agents/:id/publish). Was auto-public before.
+    active: true, public: false, humanBacked: false, createdAt: Date.now(), wins: 0, losses: 0,
   });
   return { ok: true, agent, fundTx };
 }

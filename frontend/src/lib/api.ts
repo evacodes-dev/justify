@@ -31,7 +31,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 // POST /api/create-market — deploys a real FPMM market on Arc.
 export function createMarket(input: {
-  question: string; description?: string; category?: string; closeTimeDays?: number; creator?: string
+  question: string; description?: string; category?: string; closeTimeDays?: number; creator?: string; countries?: string[]
 }) {
   return apiFetch<{ address: string; question: string; id: number; explorer: string; deployTx: string }>(
     '/api/create-market',
@@ -73,16 +73,27 @@ export interface PublicAgent {
   humanId?: string
   erc8004Id?: string
   record?: { w: number; l: number }
+  public?: boolean // false = draft, awaiting World ID confirmation to go public
 }
 
-export function listAgents() {
-  return apiFetch<{ agents: PublicAgent[] }>('/api/agents')
+// Pass `owner` to also receive that owner's own drafts (not visible to others).
+export function listAgents(owner?: string) {
+  const q = owner ? `?owner=${owner}` : ''
+  return apiFetch<{ agents: PublicAgent[] }>(`/api/agents${q}`)
 }
 
 export function createAgent(input: { name: string; preset?: string; owner?: string }) {
   return apiFetch<{ agent: PublicAgent; fundTx?: string }>('/api/agents', {
     method: 'POST',
     body: JSON.stringify(input),
+  })
+}
+
+// Publish a draft bot — confirmed with a World ID proof (or dev bypass on the backend).
+export function publishAgent(id: string, body: { owner?: string; rp_id?: string; idkitResponse?: unknown }) {
+  return apiFetch<{ agent: PublicAgent; published?: boolean; alreadyPublic?: boolean }>(`/api/agents/${id}/publish`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   })
 }
 

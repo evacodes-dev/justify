@@ -1,18 +1,31 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import RightSidebar from '../components/layout/RightSidebar'
+import WorldIdConfirm from '../components/common/WorldIdConfirm'
 import { useWallet } from '../hooks/useWallet'
 import { useToast } from '../components/common/Toast'
-import { listAgents, createAgent, type PublicAgent } from '../lib/api'
+import { listAgents, createAgent, publishAgent, type PublicAgent } from '../lib/api'
 
 const PRESETS = ['Value Hunter', 'News Sniper', 'Contrarian']
 const MAX_AGENTS = 3 // anti-sybil cap per person (TZ killer criterion)
 
-function AgentCard({ agent, isOwner }: { agent: PublicAgent; isOwner: boolean }) {
+function AgentCard({ agent, isOwner, onPublish }: {
+  agent: PublicAgent
+  isOwner: boolean
+  onPublish: (agent: PublicAgent, proof: { rp_id?: string; idkitResponse?: unknown }) => Promise<void>
+}) {
   const [active, setActive] = useState(true)
+  const [publishing, setPublishing] = useState(false)
   const rec = agent.record ?? { w: 0, l: 0 }
   const total = rec.w + rec.l
   const accuracy = total ? Math.round((rec.w / total) * 100) : 0
+  const isDraft = agent.public === false
+
+  const doPublish = async (proof: { rp_id?: string; idkitResponse?: unknown }) => {
+    setPublishing(true)
+    try { await onPublish(agent, proof) } finally { setPublishing(false) }
+  }
+
   return (
     <div className="bg-glass rounded-4 shadow-sm p-3 mb-3">
       <div className="d-flex align-items-center mb-2">
@@ -20,23 +33,43 @@ function AgentCard({ agent, isOwner }: { agent: PublicAgent; isOwner: boolean })
         <Link to={`/agents/${encodeURIComponent(agent.name)}`} className="text-decoration-none text-body fw-bold flex-grow-1">
           {agent.name}
         </Link>
-        <span className="badge bg-success me-2" title="proof-of-human (AgentKit)">human-backed ✓</span>
-        {isOwner ? (
-          <div className="form-check form-switch m-0" title="Pause / resume your agent">
-            <input className="form-check-input" type="checkbox" role="switch" checked={active} onChange={(e) => setActive(e.target.checked)} />
-          </div>
+        {isDraft ? (
+          <span className="badge bg-warning text-dark me-2" title="Not public yet — confirm with World ID to publish">Draft · private</span>
         ) : (
-          <div className="form-check form-switch m-0" title="You can only manage your own agents">
-            <input className="form-check-input" type="checkbox" role="switch" checked disabled readOnly />
-          </div>
+          <span className="badge bg-success me-2" title="proof-of-human (AgentKit)">human-backed ✓</span>
+        )}
+        {!isDraft && (
+          isOwner ? (
+            <div className="form-check form-switch m-0" title="Pause / resume your agent">
+              <input className="form-check-input" type="checkbox" role="switch" checked={active} onChange={(e) => setActive(e.target.checked)} />
+            </div>
+          ) : (
+            <div className="form-check form-switch m-0" title="You can only manage your own agents">
+              <input className="form-check-input" type="checkbox" role="switch" checked disabled readOnly />
+            </div>
+          )
         )}
       </div>
       <div className="d-flex justify-content-between text-muted small">
         <span>{agent.preset}</span>
         <span>Accuracy: <span className="text-body">{accuracy}%</span></span>
         <span>Record: <span className="text-body">{rec.w}W / {rec.l}L</span></span>
-        <span className={active ? 'text-success' : 'text-muted'}>{active ? '● active' : '⏸ paused'}</span>
+        <span className={isDraft ? 'text-warning' : active ? 'text-success' : 'text-muted'}>
+          {isDraft ? '○ not published' : active ? '● active' : '⏸ paused'}
+        </span>
       </div>
+      {isDraft && isOwner && (
+        <div className="mt-3">
+          <p className="text-muted small mb-2">This bot is private and not trading yet. Confirm with World ID to make it public.</p>
+          <WorldIdConfirm
+            label="Publish (World ID)"
+            busyLabel="Publishing…"
+            busy={publishing}
+            className="btn btn-primary btn-sm rounded-4 fw-bold w-100"
+            onConfirm={doPublish}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -52,15 +85,25 @@ export default function AgentsPage() {
   const [creating, setCreating] = useState(false)
 
   const refresh = useCallback(() => {
-    listAgents()
+    listAgents(address) // include my own drafts so I can publish them
       .then((b) => { setAgents(b.agents ?? []); setOffline(false) })
       .catch(() => setOffline(true))
-  }, [])
+  }, [address])
 
   useEffect(() => { refresh() }, [refresh])
 
   const mine = address ? agents.filter((a) => a.owner?.toLowerCase() === address.toLowerCase()) : []
   const atLimit = mine.length >= MAX_AGENTS
+
+  const publish = async (agent: PublicAgent, proof: { rp_id?: string; idkitResponse?: unknown }) => {
+    try {
+      await publishAgent(agent.id, { owner: address, ...proof })
+      toast.show(`“${agent.name}” is now public`, { kind: 'success' })
+      refresh()
+    } catch (e: any) {
+      toast.show(e?.message || 'Publish failed', { kind: 'error' })
+    }
+  }
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -69,7 +112,7 @@ export default function AgentsPage() {
     setCreating(true)
     try {
       await createAgent({ name: name.trim(), preset, owner: address })
-      toast.show(`Agent “${name.trim()}” created`, { kind: 'success' })
+      toast.show(`Agent “${name.trim()}” created as a draft — confirm with World ID to publish`, { kind: 'success' })
       setName('')
       refresh()
     } catch (e: any) {
@@ -162,6 +205,7 @@ export default function AgentsPage() {
                 key={a.id}
                 agent={a}
                 isOwner={!!address && a.owner?.toLowerCase() === address.toLowerCase()}
+                onPublish={publish}
               />
             ))
           )}

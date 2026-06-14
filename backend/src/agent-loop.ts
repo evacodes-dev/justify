@@ -33,6 +33,7 @@ type Decision = {
 export async function tickAgent(agentId: string) {
   const agent = db.agents.get(agentId);
   if (!agent) return { error: "no agent" };
+  if (agent.public === false) return { action: "skip", reasoning: "agent not public yet (confirm with World ID)" };
   if (!agent.active) return { action: "skip", reasoning: "agent paused" };
   const remaining = agent.budgetUsdc - agent.spentUsdc;
   if (remaining < AMOUNT_MIN) return { action: "skip", reasoning: "budget exhausted" };
@@ -122,7 +123,7 @@ function post(agent: AgentRow, d: Decision, market?: Market, tx?: string, status
 }
 
 export async function tickAllAgents() {
-  const active = db.agents.filter((a) => a.active && a.budgetUsdc - a.spentUsdc >= AMOUNT_MIN);
+  const active = db.agents.filter((a) => a.active && a.public !== false && a.budgetUsdc - a.spentUsdc >= AMOUNT_MIN);
   for (const a of active) {
     try { await tickAgent(a.id); } catch (e) { console.error(`[agent ${a.name}]`, (e as Error).message); }
   }

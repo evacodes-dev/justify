@@ -29,6 +29,7 @@ export interface Market {
   noLabel: string
   yesPrice: number
   noPrice: number
+  countries?: string[] // ISO-2 codes for politics markets (see lib/countries)
 }
 
 export interface PostParagraph {

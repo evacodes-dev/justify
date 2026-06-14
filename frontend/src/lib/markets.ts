@@ -19,6 +19,8 @@ export type DemoMarket = {
   thumb: string
   yesLabel?: string
   noLabel?: string
+  category?: string
+  countries?: string[] // ISO-2 codes (politics markets)
 }
 
 // Seed FPMM markets (Factory ids 0..2). New markets created via /api/create-market
@@ -49,6 +51,7 @@ export function toUiMarket(
     noLabel: m.noLabel ?? 'No',
     yesPrice: yesPct / 100,
     noPrice: (100 - yesPct) / 100,
+    countries: m.countries,
   }
 }
 
@@ -78,8 +81,13 @@ function derive(question: string, category: string): Pick<DemoMarket, 'emoji' | 
 
 export function apiMarketToDemo(m: ApiMarket): DemoMarket {
   let category = 'general'
-  try { category = JSON.parse(m.metadataURI || '{}').category || 'general' } catch { /* legacy uri */ }
-  return { id: m.id, address: m.address, question: m.question, author: m.creatorName || 'justify', ...derive(m.question, category) }
+  let countries: string[] = []
+  try {
+    const meta = JSON.parse(m.metadataURI || '{}')
+    category = meta.category || 'general'
+    countries = Array.isArray(meta.countries) ? meta.countries.map((c: any) => String(c)) : []
+  } catch { /* legacy uri */ }
+  return { id: m.id, address: m.address, question: m.question, author: m.creatorName || 'justify', category, countries, ...derive(m.question, category) }
 }
 
 export async function fetchMarkets(): Promise<{ demo: DemoMarket; api: ApiMarket }[]> {

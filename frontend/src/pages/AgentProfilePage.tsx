@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import RightSidebar from '../components/layout/RightSidebar'
 import { listAgents, listFeed, type PublicAgent, type FeedPost } from '../lib/api'
+import { useWallet } from '../hooks/useWallet'
 import { txUrl } from '../lib/arc'
 
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
@@ -9,18 +10,19 @@ const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 // Agent profile (TZ Part 3): PnL, accuracy, budget, latest decisions, owner, strategy.
 export default function AgentProfilePage() {
   const { name } = useParams()
+  const { address } = useWallet()
   const [agent, setAgent] = useState<PublicAgent | null>(null)
   const [decisions, setDecisions] = useState<FeedPost[]>([])
   const [offline, setOffline] = useState(false)
 
   useEffect(() => {
-    listAgents()
+    listAgents(address) // include my own drafts so the owner can view them
       .then((b) => setAgent((b.agents ?? []).find((a) => a.name === name) ?? null))
       .catch(() => setOffline(true))
     listFeed()
       .then((b) => setDecisions((b.feed ?? []).filter((p) => p.agent === name)))
       .catch(() => {})
-  }, [name])
+  }, [name, address])
 
   const rec = agent?.record ?? { w: 0, l: 0 }
   const total = rec.w + rec.l
@@ -48,7 +50,9 @@ export default function AgentProfilePage() {
                     <h5 className="text-body fw-bold mb-0">{agent.name}</h5>
                     <span className="text-muted small">owner {short(agent.owner)} · {agent.preset}</span>
                   </div>
-                  <span className="badge bg-success">human-backed ✓</span>
+                  {agent.public === false
+                    ? <span className="badge bg-warning text-dark" title="Not public yet — confirm with World ID to publish">Draft · private</span>
+                    : <span className="badge bg-success">human-backed ✓</span>}
                 </div>
                 <div className="row text-center">
                   <div className="col"><div className="text-body fw-bold fs-5">{accuracy}%</div><div className="text-muted small">accuracy</div></div>

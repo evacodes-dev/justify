@@ -78,7 +78,9 @@ export type Market = { id: number; address: string; question: string; metadataUR
 export type Trade = { id: string; marketId: number; user: string; outcome: number; amountUsdc: number; shares: number; priceYesAfter: number; tx: string; ts: number; agent?: boolean };
 export type Position = { id: string; marketId: number; user: string; yes: number; no: number };
 export type FeedItem = { id: string; ts: number; kind: "trade" | "agent" | "resolution"; agent?: boolean; agentName?: string; user?: string; marketId?: number; marketQuestion?: string; outcome?: number; amountUsdc?: number; reasoning?: string; confidence?: number; estProb?: number; impliedProb?: number; edge?: number; dataUsed?: string[]; humanBacked?: boolean; tx?: string; status?: string };
-export type AgentRow = { id: string; name: string; ownerHumanId: string; ownerAddress: string; address: string; pk: string; strategy: string; preset: string; budgetUsdc: number; spentUsdc: number; active: boolean; humanBacked: boolean; agentBookTx?: string; createdAt: number; wins: number; losses: number };
+// `public`: a bot starts as a draft (false) and only becomes world-visible after the
+// owner confirms with World ID. Legacy rows (field absent) are treated as public.
+export type AgentRow = { id: string; name: string; ownerHumanId: string; ownerAddress: string; address: string; pk: string; strategy: string; preset: string; budgetUsdc: number; spentUsdc: number; active: boolean; public?: boolean; humanBacked: boolean; agentBookTx?: string; createdAt: number; wins: number; losses: number };
 export type Reputation = { id: string; subject: string; accuracy: number; pnl: number; markets: number; isAgent: boolean };
 export type Approval = { id: string; agentId: string; agentName: string; ownerAddress: string; marketId: number; marketQuestion: string; outcome: number; amountUsdc: number; reasoning: string; ts: number; status: "pending" | "approved" | "rejected"; tx?: string };
 
