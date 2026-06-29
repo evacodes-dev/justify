@@ -34,6 +34,17 @@ export const config = {
   // signer: verifier (registerCreator) + oracle (resolve) + faucet (gas dotation)
   backendPk: (process.env.BACKEND_PK ?? "") as `0x${string}`,
 
+  // On-chain Chainlink Data Feed addresses (on the SETTLEMENT chain) for trustless price
+  // resolution via Resolver.resolveByPrice. Set per network in .env once verified at
+  // docs.chain.link. If unset for an asset, resolution falls back to the off-chain read.
+  onchainFeeds: {
+    ETH: (process.env.ONCHAIN_FEED_ETH || undefined) as `0x${string}` | undefined,
+    BTC: (process.env.ONCHAIN_FEED_BTC || undefined) as `0x${string}` | undefined,
+    LINK: (process.env.ONCHAIN_FEED_LINK || undefined) as `0x${string}` | undefined,
+  } as Record<string, `0x${string}` | undefined>,
+  // Max seconds since a feed's updatedAt accepted by resolveByPrice (anti-stale).
+  feedMaxStaleSec: Number(process.env.FEED_MAX_STALE_SEC ?? 3600),
+
   // AI
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
 

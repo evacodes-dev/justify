@@ -36,7 +36,11 @@ export const marketAbi = parseAbi([
 
 export const resolverAbi = parseAbi([
   "function resolve(uint256 marketId, uint8 outcome, string reason) external",
+  "function setPriceFeed(uint256 marketId, address feed, int256 threshold, uint8 comparator, uint64 maxStale) external",
+  "function resolveByPrice(uint256 marketId) external",
+  "function priceFeeds(uint256) external view returns (address feed, int256 threshold, uint8 comparator, uint64 maxStale, bool set)",
   "event Resolved(uint256 indexed marketId, uint8 outcome, string reason)",
+  "event PriceResolved(uint256 indexed marketId, address feed, int256 answer, int256 threshold, uint8 outcome)",
 ]);
 
 export const erc20Abi = parseAbi([

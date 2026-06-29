@@ -46,6 +46,54 @@ async function classify(question: string): Promise<Classification> {
   }).catch(() => ({ chainlinkResolvable: false }));
 }
 
+// Trustless ON-CHAIN price resolution: register the feed config (set-once) then trigger
+// Resolver.resolveByPrice, which reads the Chainlink feed IN the contract and resolves.
+// The outcome is derived on-chain from the live price — independently verifiable.
+async function resolveOnchainPrice(
+  marketId: number,
+  asset: string,
+  feed: `0x${string}`,
+  threshold: number,
+  comparator: "above" | "below",
+) {
+  const FEED_DECIMALS = 8; // Chainlink USD feeds are 8-decimals
+  const thresholdScaled = BigInt(Math.round(threshold * 10 ** FEED_DECIMALS));
+  const comparatorNum = comparator === "above" ? 1 : 0; // enum Comparator { Below=0, Above=1 }
+
+  const existing = (await publicClient.readContract({
+    address: config.resolver,
+    abi: resolverAbi,
+    functionName: "priceFeeds",
+    args: [BigInt(marketId)],
+  })) as readonly [string, bigint, number, bigint, boolean];
+  if (!existing[4]) {
+    const txSet = await backendSigner().run(({ wallet, account }) =>
+      wallet.writeContract({
+        address: config.resolver,
+        abi: resolverAbi,
+        functionName: "setPriceFeed",
+        args: [BigInt(marketId), feed, thresholdScaled, comparatorNum, BigInt(config.feedMaxStaleSec)],
+        account,
+        chain: arc,
+      }),
+    );
+    await publicClient.waitForTransactionReceipt({ hash: txSet as `0x${string}` });
+  }
+  const tx = await backendSigner().run(({ wallet, account }) =>
+    wallet.writeContract({
+      address: config.resolver,
+      abi: resolverAbi,
+      functionName: "resolveByPrice",
+      args: [BigInt(marketId)],
+      account,
+      chain: arc,
+    }),
+  );
+  await publicClient.waitForTransactionReceipt({ hash: tx as `0x${string}` });
+  db.markets.patch(marketId, { oracle: "chainlink" });
+  return { marketId, tx, oracle: "chainlink" as const, onchain: true };
+}
+
 export async function resolveMarket(marketId: number) {
   const m = db.markets.get(marketId);
   if (!m) return { error: "no market" };
@@ -57,13 +105,26 @@ export async function resolveMarket(marketId: number) {
 
   // 1) route
   const cls = await classify(m.question);
-  if (cls.chainlinkResolvable && cls.asset && hasFeed(cls.asset) && typeof cls.threshold === "number") {
-    const p = await readChainlinkPrice(cls.asset).catch(() => null);
-    if (p) {
-      const isYes = cls.comparator === "below" ? p.price < cls.threshold : p.price > cls.threshold;
-      outcome = isYes ? "YES" : "NO";
-      reasoning = `Resolved by Chainlink ${cls.asset.toUpperCase()}/USD Data Feed: $${p.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} is ${p.price > cls.threshold ? "above" : "below"} the $${cls.threshold.toLocaleString()} threshold → ${outcome}.`;
-      oracle = "chainlink";
+  const asset = cls.asset?.toUpperCase();
+  if (cls.chainlinkResolvable && asset && typeof cls.threshold === "number" && cls.comparator) {
+    // 1a) PREFERRED: trustless on-chain resolution when a feed is configured on the settlement chain
+    const onchain = config.onchainFeeds[asset];
+    if (onchain) {
+      try {
+        return await resolveOnchainPrice(marketId, asset, onchain, cls.threshold, cls.comparator);
+      } catch (e) {
+        console.error(`[resolve #${marketId}] on-chain price failed, falling back:`, (e as Error).message);
+      }
+    }
+    // 1b) FALLBACK: off-chain Chainlink read + push (e.g. Arc/testnet without on-chain feeds)
+    if (hasFeed(asset)) {
+      const p = await readChainlinkPrice(asset).catch(() => null);
+      if (p) {
+        const isYes = cls.comparator === "below" ? p.price < cls.threshold : p.price > cls.threshold;
+        outcome = isYes ? "YES" : "NO";
+        reasoning = `Resolved by Chainlink ${asset}/USD Data Feed: $${p.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} is ${p.price > cls.threshold ? "above" : "below"} the $${cls.threshold.toLocaleString()} threshold → ${outcome}.`;
+        oracle = "chainlink";
+      }
     }
   }
 
