@@ -120,17 +120,19 @@ export async function compatRoutes(app: FastifyInstance) {
     return { id: m.id, range, current: tailP, resolved: m.resolved, trades: trades.length, points: downsample(pts, MAX_POINTS) };
   });
 
-  // dotation: top up an embedded wallet with native USDC
+  // gas dotation (BE11): top up an embedded wallet's NATIVE balance so it can pay gas.
+  // Network-aware via config (Arc native = USDC; Base native = ETH → tiny drip).
   app.post<{ Body: any }>("/api/dotation", async (req, reply) => {
     const { address } = (req.body ?? {}) as any;
     if (!/^0x[a-fA-F0-9]{40}$/.test(address ?? "")) return reply.code(400).send({ error: "bad address" });
-    const bal = fromUsdc((await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "balanceOf", args: [address] })) as bigint);
-    if (bal >= 0.5) return { skipped: true, balance: bal };
+    const balWei = (await publicClient.getBalance({ address: address as `0x${string}` })) as bigint;
+    const bal = Number(balWei) / 1e18;
+    if (bal >= config.gasDripThreshold) return { skipped: true, balance: bal, token: config.nativeCurrency.symbol };
     const hash = await backendSigner().run(({ wallet, account }) =>
-      wallet.sendTransaction({ to: address as `0x${string}`, value: parseEther("0.5"), account, chain: arc }),
+      wallet.sendTransaction({ to: address as `0x${string}`, value: parseEther(String(config.gasDripAmount)), account, chain: arc }),
     );
     await publicClient.waitForTransactionReceipt({ hash });
-    return { funded: true, hash, amount: 0.5, balance: bal + 0.5 };
+    return { funded: true, hash, amount: config.gasDripAmount, balance: bal + config.gasDripAmount, token: config.nativeCurrency.symbol };
   });
 
   // World ID 4.0 RP signature for the IDKit widget (RP_SIGNING_KEY stays server-side)

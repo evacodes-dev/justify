@@ -45,6 +45,11 @@ export const config = {
   // Max seconds since a feed's updatedAt accepted by resolveByPrice (anti-stale).
   feedMaxStaleSec: Number(process.env.FEED_MAX_STALE_SEC ?? 3600),
 
+  // Gas dotation (BE11): top up an embedded wallet's NATIVE balance so it can pay gas.
+  // On Arc the native token is USDC; on Base it is ETH — hence tiny defaults there.
+  gasDripThreshold: Number(process.env.GAS_DRIP_THRESHOLD ?? (network.startsWith("base") ? 0.0002 : 0.5)),
+  gasDripAmount: Number(process.env.GAS_DRIP_AMOUNT ?? (network.startsWith("base") ? 0.0005 : 0.5)),
+
   // AI
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
 
