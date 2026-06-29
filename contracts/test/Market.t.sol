@@ -140,7 +140,7 @@ contract MarketTest is Test {
         _newMarket();
         vm.warp(closeTime + 1);
         vm.prank(stranger);
-        vm.expectRevert(bytes("onlyOracle"));
+        vm.expectRevert(bytes("onlySettler"));
         resolver.resolve(0, 1, "x");
     }
 
