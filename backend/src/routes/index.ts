@@ -9,6 +9,7 @@ export async function registerWriteRoutes(app: FastifyInstance) {
   const { compatRoutes } = await import("./compat.js");
   const { depositBridgeRoutes } = await import("./deposit-bridge.js");
   const { portfolioRoutes } = await import("./portfolio.js");
+  const { ogRoutes } = await import("./og.js");
   await onboardRoutes(app);
   await agentRoutes(app);
   await depositRoutes(app);
@@ -16,4 +17,5 @@ export async function registerWriteRoutes(app: FastifyInstance) {
   await compatRoutes(app); // /api/* contract for the SPA front-end
   await depositBridgeRoutes(app); // CCTP Base Sepolia → Arc auto-bridge
   await portfolioRoutes(app); // BE5 — private PnL / portfolio
+  await ogRoutes(app); // BE9 — OG share images
 }
