@@ -252,6 +252,34 @@ export async function compatRoutes(app: FastifyInstance) {
     };
   });
 
+  // BE8 — dual URL resolve: /<founder|address>/<market_name|market_address|id> → canonical market.
+  // `owner` matches a creator by name or address; `market` matches by id, contract address,
+  // or a slug of the question. Powers justify.market/<founder>/<market> links.
+  const slugify = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+  app.get<{ Params: { owner: string; market: string } }>("/api/resolve/:owner/:market", async (req, reply) => {
+    const ownerKey = String(req.params.owner ?? "").toLowerCase();
+    const u = db.users.find((x) => x.name.toLowerCase() === ownerKey || x.address.toLowerCase() === ownerKey);
+    const mk = String(req.params.market ?? "");
+    let m =
+      /^\d+$/.test(mk)
+        ? db.markets.get(Number(mk))
+        : /^0x[a-fA-F0-9]{40}$/.test(mk)
+          ? db.markets.find((x) => x.address.toLowerCase() === mk.toLowerCase())
+          : db.markets.find((x) => slugify(x.question) === slugify(mk));
+    if (!m) return reply.code(404).send({ error: "market not found" });
+    // if an owner was given, ensure the market belongs to them (else still return the market)
+    const meta = marketMeta(m);
+    return {
+      owner: u ? { name: u.name, address: u.address } : null,
+      market: {
+        id: m.id, address: m.address, question: m.question, slug: slugify(m.question),
+        priceYes: m.priceYes, volume: m.volume, resolved: m.resolved, outcome: m.outcome ?? null,
+        closeTime: m.closeTime, oracle: m.oracle, creator: m.creator, restricted: meta.restricted, countries: meta.countries,
+      },
+    };
+  });
+
   // current user's profile (settings prefill)
   app.get<{ Querystring: { address?: string } }>("/api/me", async (req) => {
     const u = db.users.find((x) => x.address.toLowerCase() === String(req.query.address ?? "").toLowerCase());
