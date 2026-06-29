@@ -7,9 +7,19 @@ import { fileURLToPath } from "node:url";
 const dataDir = join(dirname(fileURLToPath(import.meta.url)), "../data");
 if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
+// Optional durable write-through (BE12). When a Postgres backend is wired (DATABASE_URL),
+// every table/kv write is mirrored to Postgres as a JSONB blob; the local JSON file stays
+// the hot synchronous read cache (hydrated from Postgres at boot). Default: file-only.
+let persistHook: ((name: string, data: unknown) => void) | null = null;
+export function setPersistHook(fn: (name: string, data: unknown) => void) {
+  persistHook = fn;
+}
+
 export class Table<T extends { id: string | number }> {
   private file: string;
+  private name: string;
   constructor(name: string) {
+    this.name = name;
     this.file = join(dataDir, `${name}.json`);
   }
   all(): T[] {
@@ -23,6 +33,7 @@ export class Table<T extends { id: string | number }> {
   }
   private writeAll(rows: T[]) {
     writeFileSync(this.file, JSON.stringify(rows, null, 2));
+    persistHook?.(this.name, rows);
   }
   get(id: T["id"]): T | undefined {
     return this.all().find((r) => r.id === id);
@@ -75,6 +86,7 @@ export const kv = {
       : {};
     o[k] = v;
     writeFileSync(kvFile, JSON.stringify(o, null, 2));
+    persistHook?.("_kv", o);
   },
 };
 
@@ -208,6 +220,11 @@ export const db = {
   reputation: new Table<Reputation>("reputation"),
   approvals: new Table<Approval>("approvals"),
 };
+
+// Names of every persisted blob (tables + kv) — used by the Postgres durability layer
+// to hydrate the local JSON cache on boot. dataDir is exported so it can write the files.
+export const STORE_NAMES = [...Object.keys(db), "_kv"];
+export const STORE_DIR = dataDir;
 
 // nullifier dedup (World ID anti-replay)
 export const nullifiers = {

@@ -6,6 +6,17 @@ import { startIndexer } from "./indexer.js";
 import { tickAllAgents } from "./agent-loop.js";
 import { resolveDueMarkets } from "./resolution.js";
 import { registerWriteRoutes } from "./routes/index.js";
+import { initPgStore, pgEnabled } from "./pg-store.js";
+
+// BE12 — hydrate the durable Postgres store into the local cache before anything reads it.
+if (pgEnabled) {
+  try {
+    await initPgStore();
+    console.log("[pg-store] durability enabled (Postgres source of truth)");
+  } catch (e) {
+    console.error("[pg-store] init failed, continuing file-only:", (e as Error).message);
+  }
+}
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });

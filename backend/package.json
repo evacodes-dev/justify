@@ -12,10 +12,12 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.67.0",
     "@fastify/cors": "^10.0.1",
+    "@types/pg": "^8.20.0",
     "@worldcoin/idkit-core": "^4.1.8",
     "dotenv": "^16.4.5",
     "fastify": "^5.1.0",
     "p-queue": "^8.0.1",
+    "pg": "^8.22.0",
     "viem": "^2.21.45"
   },
   "devDependencies": {
