@@ -21,6 +21,9 @@ contract Market {
     IERC20 public immutable collateral;
     uint16 public immutable feeBps; // e.g. 200 = 2%
     uint64 public immutable closeTime;
+    /// @notice If the oracle never resolves, anyone may force INVALID after this grace period
+    /// past closeTime — funds can never be locked forever.
+    uint64 public constant RESOLVE_GRACE = 30 days;
     string public question;
     string public metadataURI; // topic/category/image — read by the backend (NOT for LLM default)
 
@@ -146,6 +149,18 @@ contract Market {
         resolved = true;
         resolutionReason = reason;
         emit Resolved(outcome, reason);
+    }
+
+    /// @notice Safety net for prod: if the oracle never resolves (backend/keeper failure), ANYONE
+    /// can force the market to INVALID once `RESOLVE_GRACE` has elapsed past closeTime. Settles via
+    /// the same INVALID path (YES+NO refund at 0.5 each), so collateral is never permanently locked.
+    function forceResolveInvalid() external {
+        require(!resolved, "resolved");
+        require(block.timestamp >= closeTime + RESOLVE_GRACE, "grace");
+        winningOutcome = 2;
+        resolved = true;
+        resolutionReason = "auto-invalid: oracle did not resolve within grace period";
+        emit Resolved(2, resolutionReason);
     }
 
     // ───────────────────────── settlement ─────────────────────────

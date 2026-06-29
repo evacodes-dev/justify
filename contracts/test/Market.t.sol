@@ -207,6 +207,56 @@ contract MarketTest is Test {
         assertEq(bp, bobNo / 2, "INVALID refunds NO at 0.5");
     }
 
+    // ───────────────────────── emergency resolution (oracle-down safety) ─────────────────────────
+    function test_ForceInvalid_AfterGrace_UnlocksFunds() public {
+        Market m = _newMarket();
+        uint256 aliceYes = _buy(m, alice, 1, 200e6);
+        // oracle never resolves; before grace it must revert
+        vm.warp(closeTime + 1);
+        vm.expectRevert(bytes("grace"));
+        m.forceResolveInvalid();
+        // after grace anyone (stranger) can force INVALID
+        vm.warp(closeTime + m.RESOLVE_GRACE());
+        vm.prank(stranger);
+        m.forceResolveInvalid();
+        assertTrue(m.resolved());
+        assertEq(m.winningOutcome(), 2, "forced INVALID");
+        // alice recovers her stake at 0.5
+        vm.prank(alice);
+        assertEq(m.redeem(), aliceYes / 2, "INVALID refund after force");
+    }
+
+    function test_Revert_ForceInvalid_WhenAlreadyResolved() public {
+        Market m = _newMarket();
+        vm.warp(closeTime + 1);
+        resolver.resolve(0, 1, "YES");
+        vm.warp(closeTime + m.RESOLVE_GRACE());
+        vm.expectRevert(bytes("resolved"));
+        m.forceResolveInvalid();
+    }
+
+    // ───────────────────────── second LP ─────────────────────────
+    function test_SecondLP_AddRemoveLiquidity() public {
+        Market m = _newMarket();
+        _buy(m, alice, 1, 200e6);
+        // bob adds liquidity at the current (moved) price
+        vm.startPrank(bob);
+        usdc.approve(address(m), 500e6);
+        uint256 lpShares = m.addLiquidity(500e6);
+        vm.stopPrank();
+        assertGt(lpShares, 0, "LP shares minted");
+
+        vm.warp(closeTime + 1);
+        resolver.resolve(0, 0, "NO"); // alice's YES loses → more residual for LPs
+        uint256 funded = usdc.balanceOf(address(m));
+        uint256 paid;
+        vm.prank(creator);
+        paid += m.removeLiquidity();
+        vm.prank(bob);
+        paid += m.removeLiquidity();
+        assertLe(paid, funded, "LP withdrawals <= collateral locked");
+    }
+
     // ───────────────────────── multi-collateral (EURC) ─────────────────────────
     function test_EURC_Market() public {
         MockERC20 eurc = new MockERC20("Euro Coin", "EURC", 6);
