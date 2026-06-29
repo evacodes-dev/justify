@@ -4,15 +4,25 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-// shared on-chain config produced by the contracts deploy
-const deploymentPath = join(here, "../../contracts/deployments/arc-testnet.json");
+// shared on-chain config produced by the contracts deploy.
+// Pick the network via NETWORK env (e.g. "base-sepolia", "base-mainnet"); defaults to
+// arc-testnet so the existing Arc deployment keeps working with no env change.
+const network = process.env.NETWORK ?? "arc-testnet";
+const deploymentPath = join(here, `../../contracts/deployments/${network}.json`);
 export const deployment = JSON.parse(readFileSync(deploymentPath, "utf8"));
 
 export const config = {
   port: Number(process.env.PORT ?? 8787),
-  arcRpc: process.env.ARC_RPC ?? deployment.rpc,
+  network,
+  // ARC_RPC kept for back-compat; RPC env override or deployment default.
+  arcRpc: process.env.RPC_URL ?? process.env.ARC_RPC ?? deployment.rpc,
   explorer: deployment.explorer as string,
   chainId: deployment.chainId as number,
+  nativeCurrency: (deployment.nativeCurrency ?? { name: "Ether", symbol: "ETH", decimals: 18 }) as {
+    name: string;
+    symbol: string;
+    decimals: number;
+  },
 
   // contracts
   factory: deployment.contracts.MarketFactory as `0x${string}`,

@@ -5,6 +5,7 @@
   "explorer": "https://testnet.arcscan.app",
   "deployBlock": 46943060,
   "backend": "0x199D2956A804d48804a9482240D03Dab0495F578",
+  "nativeCurrency": { "name": "USDC", "symbol": "USDC", "decimals": 18 },
   "contracts": {
     "MarketFactory": "0xD32a1275698483aE883366E7a29aED9873416011",
     "Resolver": "0xbE8D8549B776e9c287331d90F36C299C5a2E3c4f"

@@ -3,12 +3,15 @@ import { privateKeyToAccount } from "viem/accounts";
 import PQueue from "p-queue";
 import { config } from "./config.js";
 
+// `arc` is the active EVM chain (named for historical reasons; now network-selectable
+// via NETWORK env — Arc testnet, Base Sepolia, or Base mainnet). Native currency +
+// explorer come from the deployment file, so Base (gas in ETH) works unchanged.
 export const arc = defineChain({
   id: config.chainId,
-  name: "Arc Testnet",
-  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+  name: config.network,
+  nativeCurrency: config.nativeCurrency,
   rpcUrls: { default: { http: [config.arcRpc] } },
-  blockExplorers: { default: { name: "Arcscan", url: config.explorer } },
+  blockExplorers: { default: { name: "Explorer", url: config.explorer } },
 });
 
 export const publicClient = createPublicClient({ chain: arc, transport: http(config.arcRpc) });

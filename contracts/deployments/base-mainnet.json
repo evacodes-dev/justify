@@ -1,0 +1,18 @@
+{
+  "network": "base-mainnet",
+  "chainId": 8453,
+  "rpc": "https://mainnet.base.org",
+  "explorer": "https://basescan.org",
+  "deployBlock": 0,
+  "backend": "0x199D2956A804d48804a9482240D03Dab0495F578",
+  "nativeCurrency": { "name": "Ether", "symbol": "ETH", "decimals": 18 },
+  "contracts": {
+    "MarketFactory": "0x0000000000000000000000000000000000000000",
+    "Resolver": "0x0000000000000000000000000000000000000000"
+  },
+  "collateral": {
+    "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "decimals": 6
+  },
+  "seedMarkets": []
+}
