@@ -39,8 +39,8 @@ contract Resolver is Ownable {
     mapping(uint256 => PriceFeed) public priceFeeds; // marketId => on-chain price config
     mapping(uint256 => address) public resolverModule; // marketId => extra authorized settler (e.g. UMA adapter)
 
-    event OracleSet(address oracle);
-    event FactorySet(address factory);
+    event OracleSet(address indexed oracle);
+    event FactorySet(address indexed factory);
     event PriceFeedSet(uint256 indexed marketId, address feed, int256 threshold, Comparator comparator, uint64 maxStale);
     event ResolverModuleSet(uint256 indexed marketId, address module);
     event Resolved(uint256 indexed marketId, uint8 outcome, string reason);
@@ -49,6 +49,7 @@ contract Resolver is Ownable {
     constructor() Ownable(msg.sender) {}
 
     function setOracle(address o) external onlyOwner {
+        require(o != address(0), "zero");
         oracle = o;
         emit OracleSet(o);
     }
@@ -89,8 +90,10 @@ contract Resolver is Ownable {
         require(m != address(0), "noMarket");
         require(block.timestamp >= Market(m).closeTime(), "tooEarly");
 
-        (, int256 answer,, uint256 updatedAt,) = IAggregatorV3(pf.feed).latestRoundData();
+        (uint80 roundId, int256 answer,, uint256 updatedAt, uint80 answeredInRound) =
+            IAggregatorV3(pf.feed).latestRoundData();
         require(answer > 0, "badPrice");
+        require(updatedAt != 0 && answeredInRound >= roundId, "round"); // complete round only
         require(block.timestamp - updatedAt <= pf.maxStale, "stale");
 
         uint8 outcome = _priceOutcome(answer, pf.threshold, pf.comparator);

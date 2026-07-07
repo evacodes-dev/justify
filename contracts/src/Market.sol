@@ -66,6 +66,7 @@ contract Market is ReentrancyGuard {
         require(initialLiquidity > 0, "L=0");
         require(_closeTime > block.timestamp, "closeTime");
         require(_feeBps <= 1000, "fee");
+        require(_resolver != address(0) && _creator != address(0), "zero");
         factory = msg.sender; // factory funds this market with `initialLiquidity` right after deploy
         creator = _creator;
         resolver = _resolver;

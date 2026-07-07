@@ -24,8 +24,9 @@ contract MarketFactory is Ownable {
     event MarketCreated(
         uint256 indexed id, address market, address indexed creator, string question, uint64 closeTime
     );
-    event VerifierSet(address verifier);
-    event ResolverSet(address resolver);
+    event VerifierSet(address indexed verifier);
+    event ResolverSet(address indexed resolver);
+    event DefaultFeeSet(uint16 bps);
 
     modifier onlyVerifier() {
         require(msg.sender == verifier, "verifier");
@@ -36,11 +37,13 @@ contract MarketFactory is Ownable {
 
     // ───────────────────────── admin ─────────────────────────
     function setVerifier(address v) external onlyOwner {
+        require(v != address(0), "zero");
         verifier = v;
         emit VerifierSet(v);
     }
 
     function setResolver(address r) external onlyOwner {
+        require(r != address(0), "zero");
         resolver = r;
         emit ResolverSet(r);
     }
@@ -48,6 +51,7 @@ contract MarketFactory is Ownable {
     function setDefaultFee(uint16 bps) external onlyOwner {
         require(bps <= 1000, "fee");
         defaultFeeBps = bps;
+        emit DefaultFeeSet(bps);
     }
 
     // ───────────────────────── creators ─────────────────────────
