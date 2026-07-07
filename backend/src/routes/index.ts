@@ -1,27 +1,23 @@
 import type { FastifyInstance } from "fastify";
 
-// Write routes are mounted here. Filled incrementally: onboard, agents, deposit, approve.
+// All API routes are mounted here (product stack).
 export async function registerWriteRoutes(app: FastifyInstance) {
-  const { onboardRoutes } = await import("./onboard.js");
   const { agentRoutes } = await import("./agents.js");
   const { depositRoutes } = await import("./deposit.js");
   const { opsRoutes } = await import("./ops.js");
   const { compatRoutes } = await import("./compat.js");
-  const { depositBridgeRoutes } = await import("./deposit-bridge.js");
   const { portfolioRoutes } = await import("./portfolio.js");
   const { ogRoutes } = await import("./og.js");
   const { betaRoutes } = await import("./beta.js");
-  await onboardRoutes(app);
-  await agentRoutes(app);
-  await depositRoutes(app);
-  await opsRoutes(app);
-  await compatRoutes(app); // /api/* contract for the SPA front-end
-  await depositBridgeRoutes(app); // CCTP Base Sepolia → Arc auto-bridge
-  await portfolioRoutes(app); // BE5 — private PnL / portfolio
-  await ogRoutes(app); // BE9 — OG share images
-  await betaRoutes(app); // BE13 — bug-report + points
   const { socialRoutes } = await import("./social.js");
   const { adminRoutes } = await import("./admin.js");
+  await agentRoutes(app); // agent management (feature-flagged off by default)
+  await depositRoutes(app); // Blink deposit signer
+  await opsRoutes(app); // internal ops (resolve/tick)
+  await compatRoutes(app); // /api/* contract for the SPA front-end
+  await portfolioRoutes(app); // private PnL / portfolio + non-custodial withdraw
+  await ogRoutes(app); // OG share images
+  await betaRoutes(app); // bug-report + points
   await socialRoutes(app); // likes + followers
   await adminRoutes(app); // creator-role management (x-admin-secret)
 }

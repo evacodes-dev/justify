@@ -1,8 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { parseEther } from "viem";
-import { config, fromUsdc, toUsdc, txUrl } from "../config.js";
+
+import { config, toUsdc, txUrl } from "../config.js";
 import { backendSigner, publicClient, arc } from "../chain.js";
-import { factoryAbi, erc20Abi, registryAbi } from "../abis.js";
+import { erc20Abi, registryAbi } from "../abis.js";
+import { isAddr, verifyWorldProof, ensureGas } from "../util.js";
 import { db, kv, type AgentRow, type FeedItem, type Approval } from "../store.js";
 import { signRequest } from "@worldcoin/idkit-core/signing";
 import { createAgentInternal } from "./agents.js";
@@ -125,18 +126,14 @@ export async function compatRoutes(app: FastifyInstance) {
   });
 
   // gas dotation (BE11): top up an embedded wallet's NATIVE balance so it can pay gas.
-  // Network-aware via config (Arc native = USDC; Base native = ETH → tiny drip).
+  // Network-aware via config (Base native = ETH → tiny drip).
   app.post<{ Body: any }>("/api/dotation", async (req, reply) => {
     const { address } = (req.body ?? {}) as any;
-    if (!/^0x[a-fA-F0-9]{40}$/.test(address ?? "")) return reply.code(400).send({ error: "bad address" });
-    const balWei = (await publicClient.getBalance({ address: address as `0x${string}` })) as bigint;
-    const bal = Number(balWei) / 1e18;
-    if (bal >= config.gasDripThreshold) return { skipped: true, balance: bal, token: config.nativeCurrency.symbol };
-    const hash = await backendSigner().run(({ wallet, account }) =>
-      wallet.sendTransaction({ to: address as `0x${string}`, value: parseEther(String(config.gasDripAmount)), account, chain: arc }),
-    );
-    await publicClient.waitForTransactionReceipt({ hash });
-    return { funded: true, hash, amount: config.gasDripAmount, balance: bal + config.gasDripAmount, token: config.nativeCurrency.symbol };
+    if (!isAddr(address)) return reply.code(400).send({ error: "bad address" });
+    const hash = await ensureGas(address);
+    return hash
+      ? { funded: true, hash, amount: config.gasDripAmount, token: config.nativeCurrency.symbol }
+      : { skipped: true, token: config.nativeCurrency.symbol };
   });
 
   // World ID 4.0 RP signature for the IDKit widget (RP_SIGNING_KEY stays server-side)
@@ -161,29 +158,17 @@ export async function compatRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "World ID proof required (dev bypass disabled)" });
     let nullifier: string | undefined;
     if (idkitResponse && rp_id) {
-      const portal = await fetch(`https://developer.world.org/api/v4/verify/${rp_id}`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(idkitResponse),
-      });
-      if (!portal.ok) return reply.code(400).send({ error: "World ID verification failed", portal: await portal.json().catch(() => ({})) });
-      nullifier = (idkitResponse?.responses ?? []).map((r: any) => r?.nullifier).find(Boolean);
+      try {
+        nullifier = await verifyWorldProof(rp_id, idkitResponse);
+      } catch (e: any) {
+        return reply.code(400).send({ error: e.message, portal: e.portal ?? {} });
+      }
     }
-    // gas dotation (any user needs gas to trade) + legacy auto-creator (flag-gated: with
-    // creatorViaAdmin the World ID verify is JUST a checkmark — creator comes from the admin API)
-    let arcTx: string | undefined;
+    // gas dotation so a fresh embedded wallet can trade. World ID verify is JUST the
+    // checkmark — the creator role comes exclusively from the admin API.
     try {
-      const bal = fromUsdc((await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "balanceOf", args: [walletAddress] })) as bigint);
-      if (bal < 0.1) {
-        const fundTx = await backendSigner().run(({ wallet, account }) => wallet.sendTransaction({ to: walletAddress, value: parseEther("0.2"), account, chain: arc }));
-        await publicClient.waitForTransactionReceipt({ hash: fundTx });
-      }
-      if (!config.features.creatorViaAdmin) {
-        const already = await publicClient.readContract({ address: config.factory, abi: factoryAbi, functionName: "isCreator", args: [walletAddress] });
-        if (!already) {
-          arcTx = await backendSigner().run(({ wallet, account }) => wallet.writeContract({ address: config.factory, abi: factoryAbi, functionName: "registerCreator", args: [walletAddress], account, chain: arc }));
-          await publicClient.waitForTransactionReceipt({ hash: arcTx as `0x${string}` });
-        }
-      }
-    } catch (e) { app.log.error("verify post-actions: " + (e as Error).message); }
+      await ensureGas(walletAddress as `0x${string}`);
+    } catch (e) { app.log.error("verify gas dotation: " + (e as Error).message); }
 
     const existing = db.users.find((u) => u.address.toLowerCase() === walletAddress.toLowerCase());
     db.users.put({
@@ -191,7 +176,7 @@ export async function compatRoutes(app: FastifyInstance) {
       name: (name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : "") || existing?.name || walletAddress.slice(0, 8).toLowerCase(),
       verified: true, creator: existing?.creator, humanId: nullifier ?? existing?.humanId ?? walletAddress.toLowerCase(),
       country: (country ? normCountry(country) : existing?.country),
-      createdAt: existing?.createdAt ?? Date.now(), arcTx,
+      createdAt: existing?.createdAt ?? Date.now(),
     });
     return { success: true, alreadyVerified: !!existing?.verified };
   });
@@ -332,25 +317,22 @@ export async function compatRoutes(app: FastifyInstance) {
     const isRestricted = config.features.countryGate && !!restricted && countryTags.length > 0;
     const metadataURI = JSON.stringify({ category: category || "general", description: description || "", image: image || "", countries: countryTags, restricted: isRestricted });
     try {
-      // Path-B (audited Gnosis stack): create through MarketRegistry (market address = FPMM).
-      // Legacy path (Arc): MarketFactory. Same external API either way.
-      const target = (config.registry ?? config.factory) as `0x${string}`;
-      const targetAbi: any = config.registry ? registryAbi : factoryAbi;
+      // create through MarketRegistry over the audited Gnosis stack (market address = FPMM)
+      const target = config.registry!;
       const deployTx = await backendSigner().run(async ({ wallet, account }) => {
         const allowance = (await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, target] })) as bigint;
         if (allowance < L) {
           const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [target, L], account, chain: arc });
           await publicClient.waitForTransactionReceipt({ hash: ah });
         }
-        return wallet.writeContract({ address: target, abi: targetAbi, functionName: "createMarket", args: [config.usdc, question, metadataURI, closeTime, L], account, chain: arc });
+        return wallet.writeContract({ address: target, abi: registryAbi, functionName: "createMarket", args: [config.usdc, question, metadataURI, closeTime, L], account, chain: arc });
       });
       await publicClient.waitForTransactionReceipt({ hash: deployTx as `0x${string}` });
-      const count = (await publicClient.readContract({ address: target, abi: targetAbi, functionName: "marketCount" })) as bigint;
+      const count = (await publicClient.readContract({ address: target, abi: registryAbi, functionName: "marketCount" })) as bigint;
       const id = Number(count) - 1;
-      const address = config.registry
-        ? (((await publicClient.readContract({ address: target, abi: registryAbi, functionName: "markets", args: [BigInt(id)] })) as readonly unknown[])[0] as string)
-        : ((await publicClient.readContract({ address: target, abi: factoryAbi, functionName: "markets", args: [BigInt(id)] })) as string);
-      if (/^0x[a-fA-F0-9]{40}$/.test(creator ?? "")) { const s = submitters(); s[String(id)] = String(creator).toLowerCase(); kv.set("submitters", s); }
+      const info = (await publicClient.readContract({ address: target, abi: registryAbi, functionName: "markets", args: [BigInt(id)] })) as readonly unknown[];
+      const address = info[0] as string;
+      if (isAddr(creator)) { const s = submitters(); s[String(id)] = String(creator).toLowerCase(); kv.set("submitters", s); }
       return { address, question, id, explorer: config.explorer, deployTx };
     } catch (e) {
       return reply.code(502).send({ error: "create failed: " + (e as Error).message });
@@ -384,10 +366,11 @@ export async function compatRoutes(app: FastifyInstance) {
     if (!idkitResponse && process.env.ALLOW_DEV_VERIFY === "false")
       return reply.code(400).send({ error: "World ID proof required (dev bypass disabled)" });
     if (idkitResponse && rp_id) {
-      const portal = await fetch(`https://developer.world.org/api/v4/verify/${rp_id}`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(idkitResponse),
-      });
-      if (!portal.ok) return reply.code(400).send({ error: "World ID verification failed", portal: await portal.json().catch(() => ({})) });
+      try {
+        await verifyWorldProof(rp_id, idkitResponse);
+      } catch (e: any) {
+        return reply.code(400).send({ error: e.message, portal: e.portal ?? {} });
+      }
     }
     const updated = db.agents.patch(agent.id, { public: true })!;
     return { agent: toPublicAgent(updated), published: true };

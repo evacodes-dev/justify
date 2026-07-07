@@ -27,8 +27,7 @@ export const config = {
     decimals: number;
   },
 
-  // contracts
-  factory: deployment.contracts.MarketFactory as `0x${string}`,
+  // contracts (product stack: MarketRegistry + CtfResolver over audited Gnosis CTF/FPMM)
   resolver: deployment.contracts.Resolver as `0x${string}`,
   usdc: deployment.collateral.USDC as `0x${string}`,
   usdcDecimals: deployment.collateral.decimals as number,

@@ -1,217 +1,142 @@
 import { getAddress } from "viem";
 import { publicClient } from "./chain.js";
 import { config, fromUsdc } from "./config.js";
-import { factoryAbi, marketAbi } from "./abis.js";
+import { registryAbi, ctfAbi, fpmmAbi } from "./abis.js";
 import { db, kv, type Market } from "./store.js";
 
-// Simple event poller over Arc (no subgraph). Every 5s: pick up new markets from the
-// factory and new Buy/Resolved events from known markets → update file stores.
+// Path-B indexer: audited Gnosis stack. Markets come from OUR MarketRegistry; trades are
+// FPMMBuy/FPMMSell on each market's FixedProductMarketMaker; resolution is the CTF
+// ConditionResolution event (payout report). Prices are recomputed from the FPMM's pooled
+// outcome-token balances after every trade (the audited contracts don't emit a price).
+// Same external contract as the legacy indexer: fills db.markets/trades/positions/feed.
 
-const CHUNK = 5_000n;
+const CURSOR = "ctf:lastBlock";
+const registry = () => config.registry!;
+const ctf = () => config.ctf!;
 
-// Block timestamps are immutable, so cache them across ticks. Used to give trades a
-// real on-chain time (the price chart's x-axis) instead of the indexer's poll time.
-const blockTsCache = new Map<string, number>();
-async function blockTimeMs(blockNumber: bigint): Promise<number> {
-  const key = blockNumber.toString();
-  const hit = blockTsCache.get(key);
-  if (hit !== undefined) return hit;
-  const block = await publicClient.getBlock({ blockNumber });
-  const ms = Number(block.timestamp) * 1000;
-  blockTsCache.set(key, ms);
-  return ms;
+async function poolPrice(m: Market): Promise<number> {
+  // priceYes = poolNo / (poolYes + poolNo) — scarcer YES in the pool → pricier YES
+  const [balNo, balYes] = await Promise.all([
+    publicClient.readContract({ address: ctf(), abi: ctfAbi, functionName: "balanceOf", args: [m.address as `0x${string}`, BigInt(m.posNo!)] }) as Promise<bigint>,
+    publicClient.readContract({ address: ctf(), abi: ctfAbi, functionName: "balanceOf", args: [m.address as `0x${string}`, BigInt(m.posYes!)] }) as Promise<bigint>,
+  ]);
+  const t = balNo + balYes;
+  return t === 0n ? 0.5 : Number(balNo) / Number(t);
 }
 
-async function readMarketStatic(address: `0x${string}`) {
-  const [question, metadataURI, collateral, creator, closeTime] = await Promise.all([
-    publicClient.readContract({ address, abi: marketAbi, functionName: "question" }),
-    publicClient.readContract({ address, abi: marketAbi, functionName: "metadataURI" }),
-    publicClient.readContract({ address, abi: marketAbi, functionName: "collateral" }),
-    publicClient.readContract({ address, abi: marketAbi, functionName: "creator" }),
-    publicClient.readContract({ address, abi: marketAbi, functionName: "closeTime" }),
-  ]);
-  return { question, metadataURI, collateral, creator, closeTime: Number(closeTime) };
-}
-
-async function refreshMarketDynamic(id: number, address: `0x${string}`) {
-  const [price, resolved] = await Promise.all([
-    publicClient.readContract({ address, abi: marketAbi, functionName: "priceYes" }),
-    publicClient.readContract({ address, abi: marketAbi, functionName: "resolved" }),
-  ]);
-  const patch: Partial<Market> = { priceYes: Number(price) / 1e18, resolved };
-  if (resolved) {
-    const [outcome, reason] = await Promise.all([
-      publicClient.readContract({ address, abi: marketAbi, functionName: "winningOutcome" }),
-      publicClient.readContract({ address, abi: marketAbi, functionName: "resolutionReason" }),
-    ]);
-    patch.outcome = Number(outcome);
-    patch.reason = reason as string;
+async function positionIds(collateral: `0x${string}`, conditionId: `0x${string}`): Promise<[bigint, bigint]> {
+  const ids: bigint[] = [];
+  for (const ix of [1n, 2n]) {
+    const coll = (await publicClient.readContract({
+      address: ctf(), abi: ctfAbi, functionName: "getCollectionId",
+      args: ["0x0000000000000000000000000000000000000000000000000000000000000000", conditionId, ix],
+    })) as `0x${string}`;
+    ids.push((await publicClient.readContract({
+      address: ctf(), abi: ctfAbi, functionName: "getPositionId", args: [collateral, coll],
+    })) as bigint);
   }
-  db.markets.patch(id, patch);
+  return [ids[0], ids[1]];
 }
 
 function addPosition(marketId: number, user: string, outcome: number, shares: number) {
-  const pid = `${marketId}:${user.toLowerCase()}`;
-  const p = db.positions.get(pid) ?? { id: pid, marketId, user: user.toLowerCase(), yes: 0, no: 0 };
-  if (outcome === 1) p.yes += shares;
-  else p.no += shares;
-  db.positions.put(p);
+  const id = `${marketId}:${user.toLowerCase()}`;
+  const cur = db.positions.get(id) ?? { id, marketId, user, yes: 0, no: 0 };
+  if (outcome === 1) cur.yes = Math.max(0, cur.yes + shares);
+  else cur.no = Math.max(0, cur.no + shares);
+  db.positions.put(cur);
 }
 
-// One-time historical trade backfill for a market. The incremental loop only sees
-// Buy events for markets already in the DB when each block-chunk is scanned, so
-// trades that predate a market's discovery (seed markets created before deployBlock,
-// or any discovery race) are never indexed. Scan this market's full Buy history once
-// and upsert the trade rows — idempotent (keyed by tx:logIndex), so safe to re-run.
-// Only db.trades + volume are touched here; positions/feed stay with the live loop.
-const buyEvent = marketAbi.find((x: any) => x.name === "Buy");
-async function backfillMarketTrades(m: Market, latest: bigint) {
-  for (let f = config.deployBlock + 1n; f <= latest; f += CHUNK) {
-    const t = f + CHUNK > latest ? latest : f + CHUNK;
-    const logs = await publicClient.getLogs({ address: m.address as `0x${string}`, event: buyEvent as any, fromBlock: f, toBlock: t });
-    for (const log of logs) {
-      const a = (log as any).args;
-      const user = getAddress(a.user);
-      const blockTs = await blockTimeMs((log as any).blockNumber).catch(() => Date.now());
-      db.trades.put({
-        id: (log as any).transactionHash + ":" + (log as any).logIndex,
-        marketId: m.id, user, outcome: Number(a.outcome), amountUsdc: fromUsdc(a.amountIn), shares: fromUsdc(a.tokensOut),
-        priceYesAfter: Number(a.priceYesAfter) / 1e18, tx: (log as any).transactionHash, ts: Date.now(), blockTs,
-        agent: !!db.agents.find((ag) => ag.address.toLowerCase() === user.toLowerCase()),
-      });
-    }
-  }
-  // Recompute volume from the authoritative trade set (avoids double counting if the
-  // incremental loop already saw some of these trades this run).
-  const volume = db.trades.filter((x) => x.marketId === m.id).reduce((s, x) => s + x.amountUsdc, 0);
-  db.markets.patch(m.id, { volume, backfilled: true });
-}
-
-function recomputeReputation(marketId: number, winningOutcome: number) {
-  const positions = db.positions.filter((p) => p.marketId === marketId);
-  for (const p of positions) {
-    const won = winningOutcome === 2 ? true : (winningOutcome === 1 ? p.yes >= p.no : p.no >= p.yes);
-    const agent = db.agents.find((a) => a.address.toLowerCase() === p.user);
-    const id = p.user;
-    const rep = db.reputation.get(id) ?? { id, subject: p.user, accuracy: 0, pnl: 0, markets: 0, isAgent: !!agent };
-    const wins = Math.round(rep.accuracy * rep.markets) + (won ? 1 : 0);
-    rep.markets += 1;
-    rep.accuracy = wins / rep.markets;
-    db.reputation.put(rep);
-    if (agent) db.agents.patch(agent.id, won ? { wins: agent.wins + 1 } : { losses: agent.losses + 1 });
-  }
-}
-
-async function tick() {
+async function scan() {
   const latest = await publicClient.getBlockNumber();
-  let cursor = BigInt(kv.get<string>("indexedBlock", config.deployBlock.toString()));
-  if (cursor >= latest) return;
+  const from = BigInt(kv.get(CURSOR, Number(config.deployBlock))) + 1n;
+  if (from > latest) return;
+  const to = latest > from + 4999n ? from + 4999n : latest; // chunked
 
-  const toBlock = cursor + CHUNK < latest ? cursor + CHUNK : latest;
-  const fromBlock = cursor + 1n;
-
-  // 1) new markets from the factory
+  // 1) new markets from OUR registry
   const created = await publicClient.getLogs({
-    address: config.factory,
-    event: factoryAbi[5] as any, // MarketCreated
-    fromBlock,
-    toBlock,
+    address: registry(),
+    event: registryAbi.find((x: any) => x.name === "MarketCreated") as any,
+    fromBlock: from, toBlock: to,
   });
   for (const log of created) {
     const a = (log as any).args;
     const id = Number(a.id);
     if (db.markets.get(id)) continue;
-    const addr = getAddress(a.market);
-    const stat = await readMarketStatic(addr);
+    const info = (await publicClient.readContract({
+      address: registry(), abi: registryAbi, functionName: "markets", args: [BigInt(id)],
+    })) as readonly [string, string, string, string, string, bigint, string, string];
+    const [pNo, pYes] = await positionIds(info[4] as `0x${string}`, info[1] as `0x${string}`);
     db.markets.put({
-      id,
-      address: addr,
-      question: stat.question as string,
-      metadataURI: stat.metadataURI as string,
-      collateral: stat.collateral as string,
-      creator: getAddress(a.creator),
-      closeTime: stat.closeTime,
-      createdAt: Date.now(),
-      priceYes: 0.5,
-      volume: 0,
-      resolved: false,
+      id, address: getAddress(a.fpmm), question: a.question, metadataURI: info[7],
+      collateral: info[4], creator: getAddress(a.creator), closeTime: Number(a.closeTime),
+      createdAt: Date.now(), priceYes: 0.5, volume: 0, resolved: false, backfilled: true,
+      conditionId: info[1], posNo: pNo.toString(), posYes: pYes.toString(),
     });
   }
 
-  // 2) Buy / Resolved on known markets
+  // 2) trades on known FPMMs
   const markets = db.markets.all();
-  const addresses = markets.map((m) => m.address as `0x${string}`);
-  if (addresses.length) {
+  const fpmms = markets.map((m) => m.address as `0x${string}`);
+  if (fpmms.length) {
     const logs = await publicClient.getLogs({
-      address: addresses,
-      events: [marketAbi.find((x: any) => x.name === "Buy"), marketAbi.find((x: any) => x.name === "Resolved")] as any,
-      fromBlock,
-      toBlock,
+      address: fpmms,
+      events: [fpmmAbi.find((x: any) => x.name === "FPMMBuy"), fpmmAbi.find((x: any) => x.name === "FPMMSell")] as any,
+      fromBlock: from, toBlock: to,
     });
     for (const log of logs) {
       const m = markets.find((x) => x.address.toLowerCase() === (log.address as string).toLowerCase());
       if (!m) continue;
       const a = (log as any).args;
-      if ((log as any).eventName === "Buy") {
-        const amountUsdc = fromUsdc(a.amountIn);
-        const shares = fromUsdc(a.tokensOut);
-        const user = getAddress(a.user);
-        const isAgent = !!db.agents.find((ag) => ag.address.toLowerCase() === user.toLowerCase());
-        const blockTs = await blockTimeMs((log as any).blockNumber).catch(() => Date.now());
-        db.trades.put({
-          id: (log as any).transactionHash + ":" + (log as any).logIndex,
-          marketId: m.id, user, outcome: Number(a.outcome), amountUsdc, shares,
-          priceYesAfter: Number(a.priceYesAfter) / 1e18, tx: (log as any).transactionHash, ts: Date.now(), blockTs, agent: isAgent,
-        });
-        addPosition(m.id, user, Number(a.outcome), shares);
-        db.markets.patch(m.id, { volume: m.volume + amountUsdc, priceYes: Number(a.priceYesAfter) / 1e18 });
-        // human trades get a feed item here; agent trades are posted (with reasoning) by the agent loop
-        if (!isAgent) {
-          const u = db.users.find((x) => x.address.toLowerCase() === user.toLowerCase());
-          db.feed.prepend({
-            id: (log as any).transactionHash, ts: Date.now(), kind: "trade", user: u?.name ?? user,
-            marketId: m.id, marketQuestion: m.question, outcome: Number(a.outcome), amountUsdc, tx: (log as any).transactionHash,
-          });
-        }
-      } else if ((log as any).eventName === "Resolved") {
-        await refreshMarketDynamic(m.id, m.address as `0x${string}`);
-        recomputeReputation(m.id, Number(a.outcome));
+      const isBuy = (log as any).eventName === "FPMMBuy";
+      const user = getAddress(isBuy ? a.buyer : a.seller);
+      const outcome = Number(a.outcomeIndex); // slots: 0 = NO, 1 = YES
+      const amountUsdc = fromUsdc(isBuy ? a.investmentAmount : a.returnAmount);
+      const shares = fromUsdc(isBuy ? a.outcomeTokensBought : a.outcomeTokensSold);
+      const isAgent = !!db.agents.find((ag) => ag.address.toLowerCase() === user.toLowerCase());
+      const priceYes = await poolPrice(m).catch(() => m.priceYes);
+      db.trades.put({
+        id: (log as any).transactionHash + ":" + (log as any).logIndex,
+        marketId: m.id, user, outcome, amountUsdc: isBuy ? amountUsdc : -amountUsdc,
+        shares: isBuy ? shares : -shares, priceYesAfter: priceYes,
+        tx: (log as any).transactionHash, ts: Date.now(), agent: isAgent,
+      });
+      addPosition(m.id, user, outcome, isBuy ? shares : -shares);
+      db.markets.patch(m.id, { volume: m.volume + amountUsdc, priceYes });
+      if (!isAgent) {
+        const u = db.users.find((x) => x.address.toLowerCase() === user.toLowerCase());
         db.feed.prepend({
-          id: "res:" + m.id + ":" + (log as any).transactionHash, ts: Date.now(), kind: "resolution",
-          marketId: m.id, marketQuestion: m.question, outcome: Number(a.outcome), reasoning: a.reason, tx: (log as any).transactionHash,
+          id: (log as any).transactionHash + ":" + (log as any).logIndex, ts: Date.now(), kind: "trade",
+          user: u?.name ?? user, marketId: m.id, marketQuestion: m.question, outcome,
+          amountUsdc, tx: (log as any).transactionHash,
         });
       }
     }
   }
 
-  // one-time historical trade backfill for any market not yet backfilled (captures
-  // trades that predate the market's discovery — e.g. seed markets pre-deployBlock)
-  for (const m of db.markets.all().filter((x) => !x.backfilled)) {
-    try { await backfillMarketTrades(m, latest); } catch (e) { console.error("[backfill]", m.id, (e as Error).message); }
+  // 3) resolutions from the audited escrow (payout reports)
+  const resolutions = await publicClient.getLogs({
+    address: ctf(),
+    event: ctfAbi.find((x: any) => x.name === "ConditionResolution") as any,
+    fromBlock: from, toBlock: to,
+  });
+  for (const log of resolutions) {
+    const a = (log as any).args;
+    const m = markets.find((x) => (x.conditionId ?? "").toLowerCase() === String(a.conditionId).toLowerCase());
+    if (!m || m.resolved) continue;
+    const nums = a.payoutNumerators as readonly bigint[];
+    const outcome = nums[0] > 0n && nums[1] > 0n ? 2 : nums[1] > 0n ? 1 : 0;
+    db.markets.patch(m.id, { resolved: true, outcome });
+    db.feed.prepend({
+      id: "res:" + m.id + ":" + (log as any).transactionHash, ts: Date.now(), kind: "resolution",
+      marketId: m.id, marketQuestion: m.question, outcome, tx: (log as any).transactionHash,
+    });
   }
 
-  // keep prices fresh for open markets (cheap)
-  for (const m of markets.filter((x) => !x.resolved)) {
-    try { await refreshMarketDynamic(m.id, m.address as `0x${string}`); } catch {}
-  }
-
-  kv.set("indexedBlock", toBlock.toString());
+  kv.set(CURSOR, Number(to));
 }
 
-let running = false;
 export function startIndexer() {
-  const loop = async () => {
-    if (running) return;
-    running = true;
-    try { await tick(); } catch (e) { console.error("[indexer]", (e as Error).message); }
-    running = false;
-  };
+  const loop = () => scan().catch((e) => console.error("[indexer-ctf]", (e as Error).message));
   loop();
   return setInterval(loop, 5000);
-}
-
-// standalone: `npm run indexer`
-if (import.meta.url === `file://${process.argv[1]}`) {
-  console.log("[indexer] starting standalone…");
-  startIndexer();
 }

@@ -3,7 +3,6 @@ import cors from "@fastify/cors";
 import { config } from "./config.js";
 import { db } from "./store.js";
 import { startIndexer } from "./indexer.js";
-import { startCtfIndexer } from "./indexer-ctf.js";
 import { tickAllAgents } from "./agent-loop.js";
 import { resolveDueMarkets } from "./resolution.js";
 import { registerWriteRoutes } from "./routes/index.js";
@@ -22,14 +21,25 @@ if (pgEnabled) {
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
 
+// The product stack is CTF-only: a deployed MarketRegistry is required.
+if (!config.registry) {
+  console.error(
+    `[boot] no MarketRegistry in contracts/deployments/${config.network}.json — deploy with ` +
+      "script/DeployCtf.s.sol and fill in the addresses (see contracts/.env.example).",
+  );
+  process.exit(1);
+}
+
 // ─────────── health / config ───────────
-app.get("/health", async () => ({ ok: true, chainId: config.chainId, factory: config.factory }));
+app.get("/health", async () => ({ ok: true, chainId: config.chainId, registry: config.registry }));
 app.get("/config", async () => ({
   chainId: config.chainId,
   rpc: config.arcRpc,
   explorer: config.explorer,
-  factory: config.factory,
+  registry: config.registry,
+  ctf: config.ctf,
   resolver: config.resolver,
+  settler: config.settler ?? null,
   usdc: config.usdc,
   usdcDecimals: config.usdcDecimals,
   approvalThresholdUsdc: config.approvalThresholdUsdc,
@@ -81,9 +91,7 @@ await registerWriteRoutes(app);
 const port = config.port;
 app.listen({ port, host: "0.0.0.0" }).then(() => {
   app.log.info(`Justify backend on :${port} (${config.network} ${config.chainId})`);
-  // Path-B (audited Gnosis CTF stack) when a MarketRegistry is deployed; legacy otherwise.
-  if (config.registry) startCtfIndexer();
-  else startIndexer();
+  startIndexer();
   // auto-resolution cron always runs; agent loop only when the agents feature is on
   if (process.env.AGENT_LOOP !== "off") {
     if (config.features.agents) {

@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { db } from "../store.js";
 import { tickAgent, tickAllAgents, executeBuy } from "../agent-loop.js";
 import { resolveMarket } from "../resolution.js";
+import { verifyWorldProof } from "../util.js";
 
 // Demo/ops endpoints: run an agent on demand, resolve a market, manage approvals.
 export async function opsRoutes(app: FastifyInstance) {
@@ -47,10 +48,11 @@ export async function opsRoutes(app: FastifyInstance) {
 
     // optional World ID proof-of-human gate
     if (idkitResponse && rp_id) {
-      const portal = await fetch(`https://developer.world.org/api/v4/verify/${rp_id}`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(idkitResponse),
-      });
-      if (!portal.ok) return reply.code(400).send({ error: "World ID verification failed" });
+      try {
+        await verifyWorldProof(rp_id, idkitResponse);
+      } catch {
+        return reply.code(400).send({ error: "World ID verification failed" });
+      }
     }
 
     const agent = db.agents.get(appr.agentId);

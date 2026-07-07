@@ -1,6 +1,6 @@
 import { config, MODELS, toUsdc, fromUsdc, txUrl } from "./config.js";
 import { makeSigner, publicClient, arc } from "./chain.js";
-import { erc20Abi, marketAbi } from "./abis.js";
+import { erc20Abi, fpmmAbi } from "./abis.js";
 import { db, type AgentRow, type Market } from "./store.js";
 import { getRelevantData, impliedYesProb } from "./market-intel.js";
 import { claudeJson } from "./llm.js";
@@ -94,16 +94,22 @@ export async function tickAgent(agentId: string) {
 export async function executeBuy(agent: AgentRow, market: Market, outcome: "YES" | "NO", amount: number): Promise<string> {
   const signer = makeSigner(agent.pk as `0x${string}`);
   const amt = toUsdc(amount);
-  const side = outcome === "YES" ? 1 : 0;
+  const side = BigInt(outcome === "YES" ? 1 : 0); // FPMM outcome index: 0 = NO, 1 = YES
+  const fpmm = market.address as `0x${string}`;
   return signer.run(async ({ wallet, account }) => {
     const allowance = (await publicClient.readContract({
-      address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, market.address as `0x${string}`],
+      address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, fpmm],
     })) as bigint;
     if (allowance < amt) {
-      const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [market.address as `0x${string}`, amt], account, chain: arc });
+      const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [fpmm, amt], account, chain: arc });
       await publicClient.waitForTransactionReceipt({ hash: ah });
     }
-    const tx = await wallet.writeContract({ address: market.address as `0x${string}`, abi: marketAbi, functionName: "buy", args: [side, amt], account, chain: arc });
+    // quote then buy with 2% slippage bound (audited Gnosis FPMM)
+    const quote = (await publicClient.readContract({
+      address: fpmm, abi: fpmmAbi, functionName: "calcBuyAmount", args: [amt, side],
+    })) as bigint;
+    const minOut = (quote * 98n) / 100n;
+    const tx = await wallet.writeContract({ address: fpmm, abi: fpmmAbi, functionName: "buy", args: [amt, side, minOut], account, chain: arc });
     await publicClient.waitForTransactionReceipt({ hash: tx });
     return tx;
   });
