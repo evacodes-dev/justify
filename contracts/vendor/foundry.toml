@@ -1,0 +1,12 @@
+[profile.default]
+src = "entry"
+out = "out"
+libs = []
+solc = "0.5.16"
+evm_version = "istanbul"
+optimizer = true
+optimizer_runs = 200
+remappings = [
+    "openzeppelin-solidity/=oz-2.5.1/",
+    "@gnosis.pm/conditional-tokens-contracts/=conditional-tokens-contracts/",
+]

@@ -122,6 +122,10 @@ export type Market = {
   reason?: string;
   oracle?: "chainlink" | "claude";
   backfilled?: boolean;
+  // Path-B (Gnosis CTF) extras: `address` holds the FPMM; these locate the escrow positions.
+  conditionId?: string;
+  posNo?: string; // ERC-1155 positionId (decimal string) for the NO slot
+  posYes?: string;
 };
 // `ts` is wall-clock at index time; `blockTs` is the on-chain block time (accurate
 // x-axis for the price chart). Older rows may lack blockTs — fall back to ts.

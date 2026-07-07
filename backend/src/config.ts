@@ -11,6 +11,9 @@ const network = process.env.NETWORK ?? "arc-testnet";
 const deploymentPath = join(here, `../../contracts/deployments/${network}.json`);
 export const deployment = JSON.parse(readFileSync(deploymentPath, "utf8"));
 
+const nonZero = (a?: string): `0x${string}` | undefined =>
+  a && a !== "0x0000000000000000000000000000000000000000" ? (a as `0x${string}`) : undefined;
+
 export const config = {
   port: Number(process.env.PORT ?? 8787),
   network,
@@ -48,7 +51,15 @@ export const config = {
   // OptimisticSettler (AI/CRE propose → challenge window → UMA on dispute). When set, the
   // AI layer PROPOSES subjective outcomes instead of resolving directly — finalization only
   // after the public window. Unset = legacy direct resolve (beta break-glass).
-  settler: (process.env.SETTLER_ADDRESS || undefined) as `0x${string}` | undefined,
+  settler: (process.env.SETTLER_ADDRESS || nonZero(deployment.contracts.OptimisticSettler)) as
+    | `0x${string}`
+    | undefined,
+
+  // Path-B (audited Gnosis CTF/FPMM) stack. When `registry` is set the backend creates
+  // markets via MarketRegistry and indexes FPMM/CTF events; otherwise the legacy
+  // Market/MarketFactory stack is used (Arc).
+  registry: nonZero(deployment.contracts.MarketRegistry),
+  ctf: nonZero(deployment.contracts.ConditionalTokens),
 
   // Gas dotation (BE11): top up an embedded wallet's NATIVE balance so it can pay gas.
   // On Arc the native token is USDC; on Base it is ETH — hence tiny defaults there.

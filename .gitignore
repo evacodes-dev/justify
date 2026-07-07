@@ -54,3 +54,7 @@ backend/data/
 
 # blink sandbox key
 **/blink-sandbox-private.pem
+
+# vendored audited Gnosis artifacts are needed by tests/deploy — keep them tracked
+!contracts/vendor/out/
+!contracts/vendor/out/**

@@ -10,6 +10,7 @@ import {CREResolverModule} from "../src/CREResolverModule.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockOOv3} from "./mocks/MockOOv3.sol";
+import {MarketInfoAdapter} from "./mocks/MarketInfoAdapter.sol";
 
 contract OptimisticSettlerTest is Test {
     MarketFactory factory;
@@ -41,8 +42,9 @@ contract OptimisticSettlerTest is Test {
         resolver.setOracle(address(this));
         factory.registerCreator(creator);
 
+        MarketInfoAdapter info = new MarketInfoAdapter(factory);
         settler = new OptimisticSettler(
-            address(resolver), address(factory), address(oov3), IERC20(address(usdc)), WINDOW, LIVENESS
+            address(resolver), address(info), address(oov3), IERC20(address(usdc)), WINDOW, LIVENESS
         );
         cre = new CREResolverModule(address(settler), address(this)); // test acts as DON forwarder
         resolver.setGlobalModule(address(settler), true);

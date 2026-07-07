@@ -5,10 +5,19 @@
   "explorer": "https://sepolia.basescan.org",
   "deployBlock": 0,
   "backend": "0x199D2956A804d48804a9482240D03Dab0495F578",
-  "nativeCurrency": { "name": "Ether", "symbol": "ETH", "decimals": 18 },
+  "nativeCurrency": {
+    "name": "Ether",
+    "symbol": "ETH",
+    "decimals": 18
+  },
   "contracts": {
     "MarketFactory": "0x0000000000000000000000000000000000000000",
-    "Resolver": "0x0000000000000000000000000000000000000000"
+    "Resolver": "0x0000000000000000000000000000000000000000",
+    "ConditionalTokens": "0x0000000000000000000000000000000000000000",
+    "FpmmFactory": "0x0000000000000000000000000000000000000000",
+    "MarketRegistry": "0x0000000000000000000000000000000000000000",
+    "OptimisticSettler": "0x0000000000000000000000000000000000000000",
+    "CREModule": "0x0000000000000000000000000000000000000000"
   },
   "collateral": {
     "USDC": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",

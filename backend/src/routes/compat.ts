@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { parseEther } from "viem";
 import { config, fromUsdc, toUsdc, txUrl } from "../config.js";
 import { backendSigner, publicClient, arc } from "../chain.js";
-import { factoryAbi, erc20Abi } from "../abis.js";
+import { factoryAbi, erc20Abi, registryAbi } from "../abis.js";
 import { db, kv, type AgentRow, type FeedItem, type Approval } from "../store.js";
 import { signRequest } from "@worldcoin/idkit-core/signing";
 import { createAgentInternal } from "./agents.js";
@@ -312,18 +312,24 @@ export async function compatRoutes(app: FastifyInstance) {
     const isRestricted = !!restricted && countryTags.length > 0;
     const metadataURI = JSON.stringify({ category: category || "general", description: description || "", image: image || "", countries: countryTags, restricted: isRestricted });
     try {
+      // Path-B (audited Gnosis stack): create through MarketRegistry (market address = FPMM).
+      // Legacy path (Arc): MarketFactory. Same external API either way.
+      const target = (config.registry ?? config.factory) as `0x${string}`;
+      const targetAbi: any = config.registry ? registryAbi : factoryAbi;
       const deployTx = await backendSigner().run(async ({ wallet, account }) => {
-        const allowance = (await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, config.factory] })) as bigint;
+        const allowance = (await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, target] })) as bigint;
         if (allowance < L) {
-          const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [config.factory, L], account, chain: arc });
+          const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [target, L], account, chain: arc });
           await publicClient.waitForTransactionReceipt({ hash: ah });
         }
-        return wallet.writeContract({ address: config.factory, abi: factoryAbi, functionName: "createMarket", args: [config.usdc, question, metadataURI, closeTime, L], account, chain: arc });
+        return wallet.writeContract({ address: target, abi: targetAbi, functionName: "createMarket", args: [config.usdc, question, metadataURI, closeTime, L], account, chain: arc });
       });
       await publicClient.waitForTransactionReceipt({ hash: deployTx as `0x${string}` });
-      const count = (await publicClient.readContract({ address: config.factory, abi: factoryAbi, functionName: "marketCount" })) as bigint;
+      const count = (await publicClient.readContract({ address: target, abi: targetAbi, functionName: "marketCount" })) as bigint;
       const id = Number(count) - 1;
-      const address = (await publicClient.readContract({ address: config.factory, abi: factoryAbi, functionName: "markets", args: [BigInt(id)] })) as string;
+      const address = config.registry
+        ? (((await publicClient.readContract({ address: target, abi: registryAbi, functionName: "markets", args: [BigInt(id)] })) as readonly unknown[])[0] as string)
+        : ((await publicClient.readContract({ address: target, abi: factoryAbi, functionName: "markets", args: [BigInt(id)] })) as string);
       if (/^0x[a-fA-F0-9]{40}$/.test(creator ?? "")) { const s = submitters(); s[String(id)] = String(creator).toLowerCase(); kv.set("submitters", s); }
       return { address, question, id, explorer: config.explorer, deployTx };
     } catch (e) {

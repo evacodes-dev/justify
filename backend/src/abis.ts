@@ -46,6 +46,34 @@ export const resolverAbi = parseAbi([
 // Chainlink AggregatorV3 (settlement chain) — used to scale thresholds to feed decimals.
 export const aggregatorDecimalsAbi = parseAbi(["function decimals() view returns (uint8)"]);
 
+// Path-B stack: our thin MarketRegistry over the audited Gnosis CTF/FPMM contracts.
+export const registryAbi = parseAbi([
+  "function createMarket(address collateral, string question, string metadataURI, uint64 closeTime, uint256 initialLiquidity) external returns (uint256 id, address fpmm)",
+  "function registerCreator(address user) external",
+  "function marketCount() external view returns (uint256)",
+  "function markets(uint256) external view returns (address fpmm, bytes32 conditionId, bytes32 questionId, address creator, address collateral, uint64 closeTime, string question, string metadataURI)",
+  "function isCreator(address) external view returns (bool)",
+  "function isResolved(uint256) external view returns (bool)",
+  "event MarketCreated(uint256 indexed id, address fpmm, bytes32 conditionId, address indexed creator, string question, uint64 closeTime)",
+]);
+
+// Audited Gnosis ConditionalTokens (escrow) — reads + resolution event.
+export const ctfAbi = parseAbi([
+  "function balanceOf(address owner, uint256 id) external view returns (uint256)",
+  "function getCollectionId(bytes32 parentCollectionId, bytes32 conditionId, uint256 indexSet) external view returns (bytes32)",
+  "function getPositionId(address collateralToken, bytes32 collectionId) external pure returns (uint256)",
+  "function payoutDenominator(bytes32) external view returns (uint256)",
+  "function payoutNumerators(bytes32, uint256) external view returns (uint256)",
+  "event ConditionResolution(bytes32 indexed conditionId, address indexed oracle, bytes32 indexed questionId, uint256 outcomeSlotCount, uint256[] payoutNumerators)",
+]);
+
+// Audited Gnosis FixedProductMarketMaker — trade events + quotes.
+export const fpmmAbi = parseAbi([
+  "function calcBuyAmount(uint256 investmentAmount, uint256 outcomeIndex) external view returns (uint256)",
+  "event FPMMBuy(address indexed buyer, uint256 investmentAmount, uint256 feeAmount, uint256 indexed outcomeIndex, uint256 outcomeTokensBought)",
+  "event FPMMSell(address indexed seller, uint256 returnAmount, uint256 feeAmount, uint256 indexed outcomeIndex, uint256 outcomeTokensSold)",
+]);
+
 // OptimisticSettler — AI/CRE proposals with a public challenge window; UMA on dispute.
 export const settlerAbi = parseAbi([
   "function propose(uint256 marketId, uint8 outcome, string reason) external",

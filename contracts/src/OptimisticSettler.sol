@@ -5,14 +5,18 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IOptimisticOracleV3} from "./interfaces/IOptimisticOracleV3.sol";
-import {Market} from "./Market.sol";
 
 interface IResolverLike {
     function resolve(uint256 marketId, uint8 outcome, string calldata reason) external;
 }
 
-interface IFactoryLike {
-    function markets(uint256) external view returns (address);
+/// Market metadata source — implemented natively by MarketRegistry (CTF stack) and via a
+/// thin adapter for the legacy Market/MarketFactory stack.
+interface IMarketInfo {
+    function exists(uint256 id) external view returns (bool);
+    function closeTimeOf(uint256 id) external view returns (uint64);
+    function isResolved(uint256 id) external view returns (bool);
+    function questionOf(uint256 id) external view returns (string memory);
 }
 
 /// @title OptimisticSettler — optimistic finality layer shared by all off-chain truth sources.
@@ -28,7 +32,7 @@ contract OptimisticSettler is Ownable {
     using SafeERC20 for IERC20;
 
     IResolverLike public immutable resolver;
-    IFactoryLike public immutable factory;
+    IMarketInfo public immutable info;
     IOptimisticOracleV3 public immutable oov3;
     IERC20 public immutable bondCurrency;
 
@@ -69,15 +73,15 @@ contract OptimisticSettler is Ownable {
 
     constructor(
         address _resolver,
-        address _factory,
+        address _info,
         address _oov3,
         IERC20 _bondCurrency,
         uint64 _challengeWindow,
         uint64 _disputeLiveness
     ) Ownable(msg.sender) {
-        require(_resolver != address(0) && _factory != address(0) && _oov3 != address(0), "zero");
+        require(_resolver != address(0) && _info != address(0) && _oov3 != address(0), "zero");
         resolver = IResolverLike(_resolver);
-        factory = IFactoryLike(_factory);
+        info = IMarketInfo(_info);
         oov3 = IOptimisticOracleV3(_oov3);
         bondCurrency = _bondCurrency;
         _setWindows(_challengeWindow, _disputeLiveness);
@@ -109,10 +113,9 @@ contract OptimisticSettler is Ownable {
     function propose(uint256 marketId, uint8 outcome, string calldata reason) external {
         require(proposers[msg.sender], "onlyProposer");
         require(outcome <= 2, "outcome");
-        address m = factory.markets(marketId);
-        require(m != address(0), "noMarket");
-        require(block.timestamp >= Market(m).closeTime(), "tooEarly");
-        require(!Market(m).resolved(), "resolved");
+        require(info.exists(marketId), "noMarket");
+        require(block.timestamp >= info.closeTimeOf(marketId), "tooEarly");
+        require(!info.isResolved(marketId), "resolved");
         require(proposals[marketId].status == Status.None, "exists");
 
         Proposal storage p = proposals[marketId];
@@ -156,12 +159,11 @@ contract OptimisticSettler is Ownable {
         bondCurrency.safeTransferFrom(msg.sender, address(this), bond);
         bondCurrency.forceApprove(address(oov3), bond);
 
-        address m = factory.markets(marketId);
         bytes memory claim = abi.encodePacked(
             "Justify prediction market #",
             _toString(marketId),
             " (\"",
-            Market(m).question(),
+            info.questionOf(marketId),
             "\") resolves ",
             _outcomeStr(counterOutcome),
             ", contrary to the open proposal of ",
