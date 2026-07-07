@@ -35,6 +35,19 @@ contract Deploy is Script {
         resolver.setFactory(address(factory));
         resolver.setOracle(backend);
 
+        // security: only curated collateral can back markets
+        factory.setCollateralAllowed(usdc, true);
+        if (eurc != address(0)) factory.setCollateralAllowed(eurc, true);
+
+        // security: only canonical Chainlink aggregators may back the on-chain price path.
+        // Pass the network's feed addresses via env (FEED_ETH/FEED_BTC/FEED_LINK, docs.chain.link).
+        address feedEth = vm.envOr("FEED_ETH", address(0));
+        address feedBtc = vm.envOr("FEED_BTC", address(0));
+        address feedLink = vm.envOr("FEED_LINK", address(0));
+        if (feedEth != address(0)) resolver.setFeedAllowed(feedEth, true);
+        if (feedBtc != address(0)) resolver.setFeedAllowed(feedBtc, true);
+        if (feedLink != address(0)) resolver.setFeedAllowed(feedLink, true);
+
         if (seed) {
             // temporarily let the deployer create the seed markets, then hand verifier to backend
             factory.setVerifier(deployer);

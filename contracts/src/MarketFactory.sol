@@ -19,6 +19,10 @@ contract MarketFactory is Ownable {
     mapping(address => bool) public isCreator;
     mapping(uint256 => address) public markets;
     uint256 public marketCount;
+    /// @notice Owner-curated collateral allowlist. Market solvency assumes a standard ERC-20
+    /// (no fee-on-transfer, no rebasing) — an arbitrary creator-chosen token could break the
+    /// 1-share-=-1-unit redemption accounting. USDC (and optionally EURC) only.
+    mapping(address => bool) public allowedCollateral;
 
     event CreatorRegistered(address indexed user);
     event MarketCreated(
@@ -27,6 +31,7 @@ contract MarketFactory is Ownable {
     event VerifierSet(address indexed verifier);
     event ResolverSet(address indexed resolver);
     event DefaultFeeSet(uint16 bps);
+    event CollateralAllowed(address indexed token, bool allowed);
 
     modifier onlyVerifier() {
         require(msg.sender == verifier, "verifier");
@@ -54,6 +59,12 @@ contract MarketFactory is Ownable {
         emit DefaultFeeSet(bps);
     }
 
+    function setCollateralAllowed(address token, bool allowed) external onlyOwner {
+        require(token != address(0), "zero");
+        allowedCollateral[token] = allowed;
+        emit CollateralAllowed(token, allowed);
+    }
+
     // ───────────────────────── creators ─────────────────────────
     /// @notice Mark an address as a verified creator. Called by the backend after World ID.
     function registerCreator(address user) external onlyVerifier {
@@ -73,6 +84,7 @@ contract MarketFactory is Ownable {
     ) external returns (uint256 id, address market) {
         require(isCreator[msg.sender], "notCreator");
         require(resolver != address(0), "noResolver");
+        require(allowedCollateral[address(collateral)], "collateral");
 
         Market m = new Market(
             msg.sender, resolver, collateral, question, metadataURI, closeTime, defaultFeeBps, initialLiquidity

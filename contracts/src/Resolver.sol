@@ -38,9 +38,14 @@ contract Resolver is Ownable {
 
     mapping(uint256 => PriceFeed) public priceFeeds; // marketId => on-chain price config
     mapping(uint256 => address) public resolverModule; // marketId => extra authorized settler (e.g. UMA adapter)
+    /// @notice Owner-curated allowlist of genuine Chainlink aggregators. Without it the oracle
+    /// key could register ANY contract as a "feed" and fabricate prices — the allowlist is what
+    /// makes the price path trustworthy beyond the oracle key.
+    mapping(address => bool) public allowedFeeds;
 
     event OracleSet(address indexed oracle);
     event FactorySet(address indexed factory);
+    event FeedAllowed(address indexed feed, bool allowed);
     event PriceFeedSet(uint256 indexed marketId, address feed, int256 threshold, Comparator comparator, uint64 maxStale);
     event ResolverModuleSet(uint256 indexed marketId, address module);
     event Resolved(uint256 indexed marketId, uint8 outcome, string reason);
@@ -59,6 +64,14 @@ contract Resolver is Ownable {
         emit FactorySet(f);
     }
 
+    /// @notice Curate which aggregator contracts may back the price path (canonical Chainlink
+    /// feeds only). Owner-gated — the oracle key alone cannot introduce a fake feed.
+    function setFeedAllowed(address feed, bool allowed) external onlyOwner {
+        require(feed != address(0), "zero");
+        allowedFeeds[feed] = allowed;
+        emit FeedAllowed(feed, allowed);
+    }
+
     /// @notice Register the on-chain price config for a market. Set-once (immutable thereafter) so
     /// the resolution rule can't be changed after the fact — that is what makes `resolveByPrice`
     /// trustless. Callable by the oracle when it classifies a market as price-based.
@@ -66,8 +79,13 @@ contract Resolver is Ownable {
         external
     {
         require(msg.sender == oracle, "onlyOracle");
-        require(feed != address(0), "feed");
+        require(allowedFeeds[feed], "feedNotAllowed");
+        require(factory.markets(marketId) != address(0), "noMarket");
         require(!priceFeeds[marketId].set, "alreadySet");
+        require(threshold > 0, "threshold");
+        // maxStale doubles as the freshness bound AND the post-close trigger window (see
+        // resolveByPrice) — keep it sane: minutes to days, never unbounded.
+        require(maxStale >= 60 && maxStale <= 7 days, "staleBounds");
         priceFeeds[marketId] = PriceFeed(feed, threshold, comparator, maxStale, true);
         emit PriceFeedSet(marketId, feed, threshold, comparator, maxStale);
     }
@@ -83,12 +101,18 @@ contract Resolver is Ownable {
 
     /// @notice Resolve a price market by reading its Chainlink feed on-chain. Callable by ANYONE
     /// after closeTime — the outcome is derived from the live on-chain price, not from a backend.
+    /// @dev Trigger is only valid within `maxStale` of closeTime. Without this window a share
+    /// holder could wait indefinitely for the price to cross the threshold and trigger at the
+    /// most favourable moment (free optionality). If the window is missed the market settles
+    /// via the EXTERNAL path (oracle/module) or, ultimately, forceResolveInvalid.
     function resolveByPrice(uint256 marketId) external {
         PriceFeed memory pf = priceFeeds[marketId];
         require(pf.set, "noFeed");
         address m = factory.markets(marketId);
         require(m != address(0), "noMarket");
-        require(block.timestamp >= Market(m).closeTime(), "tooEarly");
+        uint256 close = Market(m).closeTime();
+        require(block.timestamp >= close, "tooEarly");
+        require(block.timestamp - close <= pf.maxStale, "window"); // resolve near close, not whenever
 
         (uint80 roundId, int256 answer,, uint256 updatedAt, uint80 answeredInRound) =
             IAggregatorV3(pf.feed).latestRoundData();

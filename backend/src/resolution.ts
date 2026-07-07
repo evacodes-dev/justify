@@ -1,6 +1,6 @@
 import { config, MODELS } from "./config.js";
 import { backendSigner, publicClient, arc } from "./chain.js";
-import { resolverAbi } from "./abis.js";
+import { resolverAbi, aggregatorDecimalsAbi } from "./abis.js";
 import { db } from "./store.js";
 import { getRelevantData } from "./market-intel.js";
 import { claudeJson } from "./llm.js";
@@ -56,8 +56,14 @@ async function resolveOnchainPrice(
   threshold: number,
   comparator: "above" | "below",
 ) {
-  const FEED_DECIMALS = 8; // Chainlink USD feeds are 8-decimals
-  const thresholdScaled = BigInt(Math.round(threshold * 10 ** FEED_DECIMALS));
+  // read the feed's actual decimals (USD feeds are 8, but never assume — a wrong scale
+  // would silently create a wrong-threshold market rule)
+  const feedDecimals = (await publicClient.readContract({
+    address: feed,
+    abi: aggregatorDecimalsAbi,
+    functionName: "decimals",
+  })) as number;
+  const thresholdScaled = BigInt(Math.round(threshold * 10 ** Number(feedDecimals)));
   const comparatorNum = comparator === "above" ? 1 : 0; // enum Comparator { Below=0, Above=1 }
 
   const existing = (await publicClient.readContract({

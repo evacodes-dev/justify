@@ -87,7 +87,23 @@ contract Market is ReentrancyGuard {
     // ───────────────────────── trading ─────────────────────────
 
     /// @notice Buy `outcome` shares with `amountIn` collateral. approve() this market first.
+    /// @dev Legacy overload without slippage bound (kept for ABI compatibility). Prefer the
+    /// 3-arg overload with `minTokensOut` — on mainnet the price can move between quote and
+    /// inclusion, and this variant accepts whatever the pool gives.
     function buy(uint8 outcome, uint256 amountIn) external nonReentrant returns (uint256 tokensOut) {
+        return _buy(outcome, amountIn, 0);
+    }
+
+    /// @notice Buy with slippage protection: reverts unless at least `minTokensOut` shares out.
+    function buy(uint8 outcome, uint256 amountIn, uint256 minTokensOut)
+        external
+        nonReentrant
+        returns (uint256 tokensOut)
+    {
+        return _buy(outcome, amountIn, minTokensOut);
+    }
+
+    function _buy(uint8 outcome, uint256 amountIn, uint256 minTokensOut) internal returns (uint256 tokensOut) {
         require(!resolved, "resolved");
         require(block.timestamp < closeTime, "closed");
         require(outcome < 2, "outcome");
@@ -105,6 +121,7 @@ contract Market is ReentrancyGuard {
         uint256 denom = reserveOut + a;
         uint256 endingIn = (reserveIn * reserveOut + denom - 1) / denom; // ceil
         tokensOut = reserveIn + a - endingIn;
+        require(tokensOut >= minTokensOut, "slippage");
 
         if (outcome == 1) {
             reserveYes = endingIn;

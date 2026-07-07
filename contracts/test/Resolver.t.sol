@@ -30,12 +30,14 @@ contract ResolverTest is Test {
         factory = new MarketFactory();
         factory.setResolver(address(resolver));
         factory.setVerifier(address(this));
+        factory.setCollateralAllowed(address(usdc), true);
         resolver.setFactory(address(factory));
         resolver.setOracle(address(this)); // test acts as backend oracle
         factory.registerCreator(creator);
         closeTime = uint64(block.timestamp + 7 days);
         usdc.mint(creator, 10_000e6);
         feed = new MockAggregator(THRESHOLD, 8, block.timestamp);
+        resolver.setFeedAllowed(address(feed), true); // owner curates genuine aggregators
     }
 
     function _newMarket() internal returns (Market m, uint256 id) {
@@ -111,6 +113,48 @@ contract ResolverTest is Test {
         resolver.setPriceFeed(id, address(feed), THRESHOLD, Resolver.Comparator.Above, MAX_STALE);
         vm.expectRevert(bytes("alreadySet"));
         resolver.setPriceFeed(id, address(feed), THRESHOLD, Resolver.Comparator.Above, MAX_STALE);
+    }
+
+    // ───────────────────────── audit hardening ─────────────────────────
+    /// H1: the trigger is only valid within maxStale of close — no waiting for a
+    /// favourable price weeks later (free optionality for one side).
+    function test_Revert_ResolveByPrice_AfterWindow() public {
+        (, uint256 id) = _newMarket();
+        resolver.setPriceFeed(id, address(feed), THRESHOLD, Resolver.Comparator.Above, MAX_STALE);
+        vm.warp(closeTime + MAX_STALE + 1); // window missed
+        feed.set(5_200e8, block.timestamp); // price is fresh — but too late to trigger
+        vm.expectRevert(bytes("window"));
+        resolver.resolveByPrice(id);
+        // the market is NOT stuck: the external oracle path still settles it
+        resolver.resolve(id, 1, "settled via oracle after missed window");
+        assertTrue(Market(factory.markets(id)).resolved());
+    }
+
+    /// H2: the oracle key cannot point the price path at an arbitrary contract.
+    function test_Revert_SetPriceFeed_FeedNotAllowed() public {
+        (, uint256 id) = _newMarket();
+        MockAggregator fake = new MockAggregator(1e8, 8, block.timestamp); // NOT allowlisted
+        vm.expectRevert(bytes("feedNotAllowed"));
+        resolver.setPriceFeed(id, address(fake), THRESHOLD, Resolver.Comparator.Above, MAX_STALE);
+    }
+
+    function test_Revert_SetPriceFeed_NoMarket() public {
+        vm.expectRevert(bytes("noMarket"));
+        resolver.setPriceFeed(999, address(feed), THRESHOLD, Resolver.Comparator.Above, MAX_STALE);
+    }
+
+    function test_Revert_SetPriceFeed_StaleBounds() public {
+        (, uint256 id) = _newMarket();
+        vm.expectRevert(bytes("staleBounds"));
+        resolver.setPriceFeed(id, address(feed), THRESHOLD, Resolver.Comparator.Above, 59);
+        vm.expectRevert(bytes("staleBounds"));
+        resolver.setPriceFeed(id, address(feed), THRESHOLD, Resolver.Comparator.Above, 8 days);
+    }
+
+    function test_Revert_SetFeedAllowed_NotOwner() public {
+        vm.prank(stranger);
+        vm.expectRevert();
+        resolver.setFeedAllowed(address(feed), true);
     }
 
     // ───────────────────────── UMA / AI-oracle seam ─────────────────────────

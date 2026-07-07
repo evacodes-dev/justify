@@ -43,6 +43,9 @@ export const resolverAbi = parseAbi([
   "event PriceResolved(uint256 indexed marketId, address feed, int256 answer, int256 threshold, uint8 outcome)",
 ]);
 
+// Chainlink AggregatorV3 (settlement chain) — used to scale thresholds to feed decimals.
+export const aggregatorDecimalsAbi = parseAbi(["function decimals() view returns (uint8)"]);
+
 export const erc20Abi = parseAbi([
   "function approve(address spender, uint256 amount) external returns (bool)",
   "function allowance(address owner, address spender) external view returns (uint256)",

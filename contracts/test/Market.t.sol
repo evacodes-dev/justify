@@ -29,6 +29,7 @@ contract MarketTest is Test {
         // wiring (test contract is owner of both)
         factory.setResolver(address(resolver));
         factory.setVerifier(address(this)); // test acts as backend verifier
+        factory.setCollateralAllowed(address(usdc), true);
         resolver.setFactory(address(factory));
         resolver.setOracle(address(this)); // test acts as backend oracle
         factory.registerCreator(creator);
@@ -207,6 +208,78 @@ contract MarketTest is Test {
         assertEq(bp, bobNo / 2, "INVALID refunds NO at 0.5");
     }
 
+    // ───────────────────────── audit hardening ─────────────────────────
+    /// M1: slippage-protected buy reverts when the pool can't deliver minTokensOut.
+    function test_Revert_Buy_Slippage() public {
+        Market m = _newMarket();
+        vm.startPrank(alice);
+        usdc.approve(address(m), 100e6);
+        vm.expectRevert(bytes("slippage"));
+        m.buy(1, 100e6, type(uint256).max); // impossible ask
+        // realistic ask succeeds (>= what the pool actually gives)
+        uint256 out = m.buy(1, 100e6, 100e6); // FPMM gives > amountIn at 50/50
+        vm.stopPrank();
+        assertGe(out, 100e6);
+    }
+
+    /// M2: non-allowlisted collateral cannot back a market.
+    function test_Revert_CreateMarket_CollateralNotAllowed() public {
+        MockERC20 evil = new MockERC20("Evil", "EVL", 6); // not allowlisted
+        evil.mint(creator, 5_000e6);
+        vm.startPrank(creator);
+        evil.approve(address(factory), L);
+        vm.expectRevert(bytes("collateral"));
+        factory.createMarket(IERC20(address(evil)), "q", "m", closeTime, L);
+        vm.stopPrank();
+    }
+
+    /// fees accrue to the LP side: after resolution the LP take covers at least feePool.
+    function test_FeeAccrual_ToLP() public {
+        Market m = _newMarket();
+        _buy(m, alice, 1, 500e6); // 2% fee → 10e6 into feePool
+        uint256 fees = m.feePool();
+        assertEq(fees, 10e6, "2% of 500");
+        vm.warp(closeTime + 1);
+        resolver.resolve(0, 0, "NO"); // alice's YES loses entirely
+        vm.prank(creator);
+        uint256 lpTake = m.removeLiquidity();
+        assertGe(lpTake, fees, "LP take includes accrued fees");
+    }
+
+    function test_Revert_AddLiquidity_AfterClose() public {
+        Market m = _newMarket();
+        vm.warp(closeTime + 1);
+        vm.startPrank(bob);
+        usdc.approve(address(m), 100e6);
+        vm.expectRevert(bytes("closed"));
+        m.addLiquidity(100e6);
+        vm.stopPrank();
+    }
+
+    /// solvency fuzz on the INVALID path: refunds + LP withdrawal never exceed locked collateral.
+    function testFuzz_Solvency_InvalidPath(uint256 a1, uint256 a2) public {
+        a1 = bound(a1, 1e6, 4_000e6);
+        a2 = bound(a2, 1e6, 4_000e6);
+        Market m = _newMarket();
+        usdc.mint(alice, a1);
+        usdc.mint(bob, a2);
+        _buy(m, alice, 1, a1);
+        _buy(m, bob, 0, a2);
+        uint256 funded = usdc.balanceOf(address(m));
+
+        vm.warp(closeTime + 1);
+        resolver.resolve(0, 2, "INVALID");
+
+        uint256 paid;
+        vm.prank(alice);
+        paid += m.redeem();
+        vm.prank(bob);
+        paid += m.redeem();
+        vm.prank(creator);
+        paid += m.removeLiquidity();
+        assertLe(paid, funded, "INVALID path never over-releases");
+    }
+
     // ───────────────────────── emergency resolution (oracle-down safety) ─────────────────────────
     function test_ForceInvalid_AfterGrace_UnlocksFunds() public {
         Market m = _newMarket();
@@ -260,6 +333,7 @@ contract MarketTest is Test {
     // ───────────────────────── multi-collateral (EURC) ─────────────────────────
     function test_EURC_Market() public {
         MockERC20 eurc = new MockERC20("Euro Coin", "EURC", 6);
+        factory.setCollateralAllowed(address(eurc), true);
         eurc.mint(creator, 5_000e6);
         eurc.mint(alice, 5_000e6);
 
