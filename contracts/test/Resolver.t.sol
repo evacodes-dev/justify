@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {MarketFactory} from "../src/MarketFactory.sol";
 import {Market} from "../src/Market.sol";
 import {Resolver} from "../src/Resolver.sol";
-import {IERC20} from "../src/interfaces/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockAggregator} from "./mocks/MockAggregator.sol";
 

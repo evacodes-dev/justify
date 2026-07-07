@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {IERC20} from "./interfaces/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title Market — binary FPMM prediction market (Gnosis-style constant product).
 /// @notice Outcomes: 0 = NO, 1 = YES, 2 = INVALID (resolution only).
@@ -13,7 +15,9 @@ import {IERC20} from "./interfaces/IERC20.sol";
 /// contract on every buy/liquidity action and is only RELEASED — automatically conditioned on
 /// the resolved outcome — through `redeem()` (winners) and `removeLiquidity()` (LPs). No admin
 /// withdrawal path exists; settlement is purely a function of the on-chain resolution.
-contract Market {
+contract Market is ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     // ───────────────────────── config (immutable) ─────────────────────────
     address public immutable factory;
     address public immutable resolver; // the Resolver contract — only caller allowed to resolve()
@@ -40,15 +44,6 @@ contract Market {
     mapping(address => mapping(uint8 => uint256)) public balances; // user => outcome => shares
     mapping(uint8 => uint256) public totalOutcomeShares; // outstanding shares per outcome
     mapping(address => uint256) public lpShares;
-
-    // ───────────────────────── reentrancy guard ─────────────────────────
-    uint256 private _lock = 1;
-    modifier nonReentrant() {
-        require(_lock == 1, "reentrant");
-        _lock = 2;
-        _;
-        _lock = 1;
-    }
 
     // ───────────────────────── events (read by the backend indexer) ─────────────────────────
     event Buy(address indexed user, uint8 outcome, uint256 amountIn, uint256 tokensOut, uint256 priceYesAfter);
@@ -121,7 +116,7 @@ contract Market {
         balances[msg.sender][outcome] += tokensOut;
         totalOutcomeShares[outcome] += tokensOut;
 
-        require(collateral.transferFrom(msg.sender, address(this), amountIn), "xfer");
+        collateral.safeTransferFrom(msg.sender, address(this), amountIn);
         emit Buy(msg.sender, outcome, amountIn, tokensOut, priceYes());
     }
 
@@ -185,7 +180,7 @@ contract Market {
             totalOutcomeShares[w] -= amt;
             payout = amt; // 1 winning share = 1 collateral unit
         }
-        require(collateral.transfer(msg.sender, payout), "xfer");
+        collateral.safeTransfer(msg.sender, payout);
         emit Redeemed(msg.sender, payout);
     }
 
@@ -204,7 +199,7 @@ contract Market {
         reserveNo += addNo;
         lpShares[msg.sender] += shares;
         totalLiquidityShares += shares;
-        require(collateral.transferFrom(msg.sender, address(this), amount), "xfer");
+        collateral.safeTransferFrom(msg.sender, address(this), amount);
         emit LiquidityAdded(msg.sender, amount, shares);
     }
 
@@ -221,7 +216,7 @@ contract Market {
         amount = (lpPool * s) / totalLiquidityShares;
         lpShares[msg.sender] = 0;
         totalLiquidityShares -= s;
-        if (amount > 0) require(collateral.transfer(msg.sender, amount), "xfer");
+        if (amount > 0) collateral.safeTransfer(msg.sender, amount);
         emit LiquidityRemoved(msg.sender, s, amount);
     }
 

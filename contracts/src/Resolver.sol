@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {Market} from "./Market.sol";
 import {IAggregatorV3} from "./interfaces/IAggregatorV3.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IFactory {
     function markets(uint256) external view returns (address);
@@ -18,7 +19,7 @@ interface IFactory {
 ///      backend `oracle` (AI oracle layer). The per-market `resolverModule` seam lets us later
 ///      swap in a UMA optimistic-oracle adapter (AI oracle layer + UMA) WITHOUT touching Market
 ///      or this core — just point the market's module at the adapter.
-contract Resolver {
+contract Resolver is Ownable {
     enum Comparator {
         Below, // YES if price <  threshold
         Above // YES if price >  threshold
@@ -32,7 +33,6 @@ contract Resolver {
         bool set;
     }
 
-    address public owner;
     address public oracle; // backend / AI oracle layer — default settler for EXTERNAL markets
     IFactory public factory;
 
@@ -46,14 +46,7 @@ contract Resolver {
     event Resolved(uint256 indexed marketId, uint8 outcome, string reason);
     event PriceResolved(uint256 indexed marketId, address feed, int256 answer, int256 threshold, uint8 outcome);
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "owner");
-        _;
-    }
-
-    constructor() {
-        owner = msg.sender;
-    }
+    constructor() Ownable(msg.sender) {}
 
     function setOracle(address o) external onlyOwner {
         oracle = o;
