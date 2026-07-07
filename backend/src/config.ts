@@ -45,6 +45,11 @@ export const config = {
   // Max seconds since a feed's updatedAt accepted by resolveByPrice (anti-stale).
   feedMaxStaleSec: Number(process.env.FEED_MAX_STALE_SEC ?? 3600),
 
+  // OptimisticSettler (AI/CRE propose → challenge window → UMA on dispute). When set, the
+  // AI layer PROPOSES subjective outcomes instead of resolving directly — finalization only
+  // after the public window. Unset = legacy direct resolve (beta break-glass).
+  settler: (process.env.SETTLER_ADDRESS || undefined) as `0x${string}` | undefined,
+
   // Gas dotation (BE11): top up an embedded wallet's NATIVE balance so it can pay gas.
   // On Arc the native token is USDC; on Base it is ETH — hence tiny defaults there.
   gasDripThreshold: Number(process.env.GAS_DRIP_THRESHOLD ?? (network.startsWith("base") ? 0.0002 : 0.5)),

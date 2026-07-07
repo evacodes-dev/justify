@@ -38,6 +38,10 @@ contract Resolver is Ownable {
 
     mapping(uint256 => PriceFeed) public priceFeeds; // marketId => on-chain price config
     mapping(uint256 => address) public resolverModule; // marketId => extra authorized settler (e.g. UMA adapter)
+    /// @notice Owner-approved settlement modules valid for ALL markets (UMA adapter, CRE
+    /// receiver, …). Each module has its own internal authorization (UMA: survived challenge
+    /// window; CRE: DON forwarder report) — this mapping only admits the module contract.
+    mapping(address => bool) public globalModules;
     /// @notice Owner-curated allowlist of genuine Chainlink aggregators. Without it the oracle
     /// key could register ANY contract as a "feed" and fabricate prices — the allowlist is what
     /// makes the price path trustworthy beyond the oracle key.
@@ -46,6 +50,7 @@ contract Resolver is Ownable {
     event OracleSet(address indexed oracle);
     event FactorySet(address indexed factory);
     event FeedAllowed(address indexed feed, bool allowed);
+    event GlobalModuleSet(address indexed module, bool allowed);
     event PriceFeedSet(uint256 indexed marketId, address feed, int256 threshold, Comparator comparator, uint64 maxStale);
     event ResolverModuleSet(uint256 indexed marketId, address module);
     event Resolved(uint256 indexed marketId, uint8 outcome, string reason);
@@ -90,11 +95,19 @@ contract Resolver is Ownable {
         emit PriceFeedSet(marketId, feed, threshold, comparator, maxStale);
     }
 
-    /// @notice UMA / AI-oracle seam: authorize an extra settler for a market (e.g. a UMA OOv3
-    /// adapter). Owner-gated. The adapter then calls `resolve` once its optimistic flow settles.
+    /// @notice Authorize an extra settler for ONE market (per-market override).
     function setResolverModule(uint256 marketId, address module) external onlyOwner {
         resolverModule[marketId] = module;
         emit ResolverModuleSet(marketId, module);
+    }
+
+    /// @notice Approve a settlement module for ALL markets (the OptimisticSettler, future
+    /// adapters). Each module carries its own internal authorization — OptimisticSettler only
+    /// resolves after an unchallenged window or a UMA-decided challenge.
+    function setGlobalModule(address module, bool allowed) external onlyOwner {
+        require(module != address(0), "zero");
+        globalModules[module] = allowed;
+        emit GlobalModuleSet(module, allowed);
     }
 
     // ───────────────────────── PRICE path (on-chain, trustless) ─────────────────────────
@@ -134,9 +147,15 @@ contract Resolver is Ownable {
     // ───────────────────────── EXTERNAL path (off-chain settler) ─────────────────────────
 
     /// @notice Resolve `marketId` to `outcome` (0=NO,1=YES,2=INVALID) with an on-chain `reason`.
-    /// Caller must be the backend `oracle` OR the market's authorized `resolverModule` (UMA adapter).
+    /// Callers: an approved global module (OptimisticSettler — the normal path for AI/CRE
+    /// truth), a per-market module, or the `oracle` key. The direct oracle path is BREAK-GLASS
+    /// for the beta (it bypasses the challenge window) — disable it for mainnet by pointing
+    /// `oracle` at a multisig/timelock once the optimistic flow is battle-tested.
     function resolve(uint256 marketId, uint8 outcome, string calldata reason) external {
-        require(msg.sender == oracle || msg.sender == resolverModule[marketId], "onlySettler");
+        require(
+            globalModules[msg.sender] || msg.sender == resolverModule[marketId] || msg.sender == oracle,
+            "onlySettler"
+        );
         address m = factory.markets(marketId);
         require(m != address(0), "noMarket");
         Market(m).resolve(outcome, reason);

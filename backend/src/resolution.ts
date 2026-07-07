@@ -1,6 +1,6 @@
 import { config, MODELS } from "./config.js";
 import { backendSigner, publicClient, arc } from "./chain.js";
-import { resolverAbi, aggregatorDecimalsAbi } from "./abis.js";
+import { resolverAbi, aggregatorDecimalsAbi, settlerAbi } from "./abis.js";
 import { db } from "./store.js";
 import { getRelevantData } from "./market-intel.js";
 import { claudeJson } from "./llm.js";
@@ -134,16 +134,13 @@ export async function resolveMarket(marketId: number) {
     }
   }
 
-  // 2) subjective fallback → Claude Sonnet
+  // 2) subjective path. With the OptimisticSettler configured, the AI layer PROPOSES the
+  // outcome (public challenge window; UMA decides disputes) — it never finalizes directly.
+  if (!outcome && config.settler) return advanceOptimistic(marketId, m.question, m.metadataURI);
+
+  // 2b) subjective verdict via Claude (legacy direct path when no settler configured)
   if (!outcome) {
-    const data = await getRelevantData(m.question, m.metadataURI);
-    const verdict = await claudeJson<{ outcome: "YES" | "NO" | "INVALID"; reasoning: string }>({
-      model: MODELS.resolution,
-      maxTokens: 500,
-      system: "You are an impartial prediction-market resolver. Decide YES, NO, or INVALID for the question using ONLY the data provided for THIS market's topic. Be decisive; cite the number/fact. 2-3 sentence reason.",
-      user: `Market: "${m.question}"\nTopic data: ${data.map((d) => `${d.label}=${d.value}`).join("; ")}\nResolve now.`,
-      schema: SCHEMA,
-    });
+    const verdict = await subjectiveVerdict(m.question, m.metadataURI);
     outcome = verdict.outcome;
     reasoning = verdict.reasoning;
     oracle = "claude";
@@ -156,6 +153,65 @@ export async function resolveMarket(marketId: number) {
   await publicClient.waitForTransactionReceipt({ hash: tx as `0x${string}` });
   db.markets.patch(marketId, { oracle });
   return { marketId, outcome, reasoning, tx, oracle };
+}
+
+async function subjectiveVerdict(question: string, metadataURI: string) {
+  const data = await getRelevantData(question, metadataURI);
+  return claudeJson<{ outcome: "YES" | "NO" | "INVALID"; reasoning: string }>({
+    model: MODELS.resolution,
+    maxTokens: 500,
+    system: "You are an impartial prediction-market resolver. Decide YES, NO, or INVALID for the question using ONLY the data provided for THIS market's topic. Be decisive; cite the number/fact. 2-3 sentence reason.",
+    user: `Market: "${question}"\nTopic data: ${data.map((d) => `${d.label}=${d.value}`).join("; ")}\nResolve now.`,
+    schema: SCHEMA,
+  });
+}
+
+// State machine for the optimistic path — idempotent, driven by the resolve cron:
+//   none → AI verdict → propose;  proposed → finalize once the window passed;
+//   challenged → settle the UMA assertion once its liveness passed (revert = still live);
+//   settled → done (the indexer picks up Market's Resolved event).
+async function advanceOptimistic(marketId: number, question: string, metadataURI: string) {
+  const settler = config.settler!;
+  const p = (await publicClient.readContract({
+    address: settler,
+    abi: settlerAbi,
+    functionName: "proposals",
+    args: [BigInt(marketId)],
+  })) as readonly [number, number, number, bigint, string, string, string, string];
+  const status = Number(p[2]); // 0 none, 1 proposed, 2 challenged, 3 settled
+
+  if (status === 0) {
+    const verdict = await subjectiveVerdict(question, metadataURI);
+    const outcomeNum = verdict.outcome === "YES" ? 1 : verdict.outcome === "NO" ? 0 : 2;
+    const tx = await backendSigner().run(({ wallet, account }) =>
+      wallet.writeContract({ address: settler, abi: settlerAbi, functionName: "propose", args: [BigInt(marketId), outcomeNum, verdict.reasoning], account, chain: arc }),
+    );
+    await publicClient.waitForTransactionReceipt({ hash: tx as `0x${string}` });
+    db.markets.patch(marketId, { oracle: "claude" });
+    return { marketId, status: "proposed", outcome: verdict.outcome, reasoning: verdict.reasoning, tx, oracle: "claude" as const };
+  }
+  if (status === 1) {
+    const ready = (await publicClient.readContract({ address: settler, abi: settlerAbi, functionName: "canFinalize", args: [BigInt(marketId)] })) as boolean;
+    if (!ready) return { marketId, status: "challenge_window" };
+    const tx = await backendSigner().run(({ wallet, account }) =>
+      wallet.writeContract({ address: settler, abi: settlerAbi, functionName: "finalize", args: [BigInt(marketId)], account, chain: arc }),
+    );
+    await publicClient.waitForTransactionReceipt({ hash: tx as `0x${string}` });
+    return { marketId, status: "finalized", tx };
+  }
+  if (status === 2) {
+    // challenged → escalated to UMA; settle once its liveness passed (reverts while live)
+    try {
+      const tx = await backendSigner().run(({ wallet, account }) =>
+        wallet.writeContract({ address: settler, abi: settlerAbi, functionName: "settleChallenge", args: [BigInt(marketId)], account, chain: arc }),
+      );
+      await publicClient.waitForTransactionReceipt({ hash: tx as `0x${string}` });
+      return { marketId, status: "challenge_settled", tx };
+    } catch {
+      return { marketId, status: "dispute_pending" };
+    }
+  }
+  return { marketId, status: "settled" };
 }
 
 export async function resolveDueMarkets() {

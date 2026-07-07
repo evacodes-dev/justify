@@ -46,6 +46,15 @@ export const resolverAbi = parseAbi([
 // Chainlink AggregatorV3 (settlement chain) — used to scale thresholds to feed decimals.
 export const aggregatorDecimalsAbi = parseAbi(["function decimals() view returns (uint8)"]);
 
+// OptimisticSettler — AI/CRE proposals with a public challenge window; UMA on dispute.
+export const settlerAbi = parseAbi([
+  "function propose(uint256 marketId, uint8 outcome, string reason) external",
+  "function finalize(uint256 marketId) external",
+  "function canFinalize(uint256 marketId) view returns (bool)",
+  "function settleChallenge(uint256 marketId) external",
+  "function proposals(uint256) view returns (uint8 outcome, uint8 counterOutcome, uint8 status, uint64 proposedAt, address proposer, address challenger, bytes32 assertionId, string reason)",
+]);
+
 export const erc20Abi = parseAbi([
   "function approve(address spender, uint256 amount) external returns (bool)",
   "function allowance(address owner, address spender) external view returns (uint256)",
