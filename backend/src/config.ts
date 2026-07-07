@@ -66,6 +66,19 @@ export const config = {
   gasDripThreshold: Number(process.env.GAS_DRIP_THRESHOLD ?? (network.startsWith("base") ? 0.0002 : 0.5)),
   gasDripAmount: Number(process.env.GAS_DRIP_AMOUNT ?? (network.startsWith("base") ? 0.0005 : 0.5)),
 
+  // Product feature flags (call decisions, 2026-06-14). Kept as flags — code stays,
+  // behavior toggles per environment (hackathon demo can re-enable).
+  features: {
+    // AI agents: off for the product MVP (agents UI hidden, loop stopped, lists empty)
+    agents: (process.env.FEATURE_AGENTS ?? "off") !== "off",
+    // country-gated betting: off for the product MVP (can-bet always allows)
+    countryGate: (process.env.FEATURE_COUNTRY_GATE ?? "off") !== "off",
+    // creator role granted ONLY via the admin endpoint; World ID = just a verified checkmark
+    creatorViaAdmin: (process.env.CREATOR_VIA_ADMIN ?? "true") !== "false",
+  },
+  // shared secret for /api/admin/* (x-admin-secret header). Unset = admin API disabled.
+  adminSecret: process.env.ADMIN_SECRET ?? "",
+
   // AI
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
 

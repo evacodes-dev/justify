@@ -95,7 +95,8 @@ export type User = {
   id: string;
   address: string;
   name: string;
-  verified: boolean;
+  verified: boolean; // World ID checkmark (social-style badge)
+  creator?: boolean; // may create markets — granted ONLY via the admin API
   humanId?: string;
   avatar?: string;
   bio?: string;

@@ -20,4 +20,8 @@ export async function registerWriteRoutes(app: FastifyInstance) {
   await portfolioRoutes(app); // BE5 — private PnL / portfolio
   await ogRoutes(app); // BE9 — OG share images
   await betaRoutes(app); // BE13 — bug-report + points
+  const { socialRoutes } = await import("./social.js");
+  const { adminRoutes } = await import("./admin.js");
+  await socialRoutes(app); // likes + followers
+  await adminRoutes(app); // creator-role management (x-admin-secret)
 }

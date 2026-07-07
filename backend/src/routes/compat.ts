@@ -73,11 +73,15 @@ export async function compatRoutes(app: FastifyInstance) {
   };
 
   // markets for the on-chain layer (FPMM addresses + live price)
+  const { likesOf } = await import("./social.js");
   app.get("/api/markets", async () => ({
     markets: db.markets.all().sort((a, b) => b.createdAt - a.createdAt).map((m) => ({
       id: m.id, address: m.address, question: m.question, metadataURI: m.metadataURI,
       priceYes: m.priceYes, volume: m.volume, resolved: m.resolved, outcome: m.outcome, closeTime: m.closeTime, oracle: m.oracle,
       creator: m.creator, creatorName: creatorNameOf(m.id, m.creator),
+      likes: likesOf(m.id).length,
+      // Path-B (Gnosis CTF) extras — null on the legacy stack
+      conditionId: m.conditionId ?? null, posYes: m.posYes ?? null, posNo: m.posNo ?? null,
     })),
   }));
 
@@ -163,7 +167,8 @@ export async function compatRoutes(app: FastifyInstance) {
       if (!portal.ok) return reply.code(400).send({ error: "World ID verification failed", portal: await portal.json().catch(() => ({})) });
       nullifier = (idkitResponse?.responses ?? []).map((r: any) => r?.nullifier).find(Boolean);
     }
-    // dotation + registerCreator (best-effort, idempotent)
+    // gas dotation (any user needs gas to trade) + legacy auto-creator (flag-gated: with
+    // creatorViaAdmin the World ID verify is JUST a checkmark — creator comes from the admin API)
     let arcTx: string | undefined;
     try {
       const bal = fromUsdc((await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "balanceOf", args: [walletAddress] })) as bigint);
@@ -171,10 +176,12 @@ export async function compatRoutes(app: FastifyInstance) {
         const fundTx = await backendSigner().run(({ wallet, account }) => wallet.sendTransaction({ to: walletAddress, value: parseEther("0.2"), account, chain: arc }));
         await publicClient.waitForTransactionReceipt({ hash: fundTx });
       }
-      const already = await publicClient.readContract({ address: config.factory, abi: factoryAbi, functionName: "isCreator", args: [walletAddress] });
-      if (!already) {
-        arcTx = await backendSigner().run(({ wallet, account }) => wallet.writeContract({ address: config.factory, abi: factoryAbi, functionName: "registerCreator", args: [walletAddress], account, chain: arc }));
-        await publicClient.waitForTransactionReceipt({ hash: arcTx as `0x${string}` });
+      if (!config.features.creatorViaAdmin) {
+        const already = await publicClient.readContract({ address: config.factory, abi: factoryAbi, functionName: "isCreator", args: [walletAddress] });
+        if (!already) {
+          arcTx = await backendSigner().run(({ wallet, account }) => wallet.writeContract({ address: config.factory, abi: factoryAbi, functionName: "registerCreator", args: [walletAddress], account, chain: arc }));
+          await publicClient.waitForTransactionReceipt({ hash: arcTx as `0x${string}` });
+        }
       }
     } catch (e) { app.log.error("verify post-actions: " + (e as Error).message); }
 
@@ -182,7 +189,7 @@ export async function compatRoutes(app: FastifyInstance) {
     db.users.put({
       id: walletAddress.toLowerCase(), address: walletAddress,
       name: (name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : "") || existing?.name || walletAddress.slice(0, 8).toLowerCase(),
-      verified: true, humanId: nullifier ?? existing?.humanId ?? walletAddress.toLowerCase(),
+      verified: true, creator: existing?.creator, humanId: nullifier ?? existing?.humanId ?? walletAddress.toLowerCase(),
       country: (country ? normCountry(country) : existing?.country),
       createdAt: existing?.createdAt ?? Date.now(), arcTx,
     });
@@ -206,8 +213,9 @@ export async function compatRoutes(app: FastifyInstance) {
     catch { return { restricted: false, countries: [] }; }
   };
 
-  // country gate: can the connected user bet on this market?
+  // country gate: can the connected user bet on this market? (feature-flagged off for MVP)
   app.get<{ Params: { id: string }; Querystring: { address?: string } }>("/api/can-bet/:id", async (req) => {
+    if (!config.features.countryGate) return { allowed: true, restricted: false };
     const m = db.markets.get(Number(req.params.id));
     if (!m) return { allowed: false, reason: "market not found" };
     const meta = marketMeta(m);
@@ -230,11 +238,13 @@ export async function compatRoutes(app: FastifyInstance) {
 
   // creators (real users) for the feed / people lists
   app.get("/api/creators", async () => {
+    const { followersOf } = await import("./social.js");
     const users = db.users.all();
     return {
       creators: users.map((u) => ({
         id: u.address.toLowerCase(), name: u.name, handle: "@" + u.name, address: u.address,
-        avatar: u.avatar || "/img/images.jpeg", bio: u.bio || "", verified: u.verified,
+        avatar: u.avatar || "/img/images.jpeg", bio: u.bio || "", verified: u.verified, creator: !!u.creator,
+        followers: followersOf(u.address.toLowerCase()).length,
         markets: Object.values(submitters()).filter((a) => a.toLowerCase() === u.address.toLowerCase()).length,
       })),
     };
@@ -248,8 +258,13 @@ export async function compatRoutes(app: FastifyInstance) {
     const subs = submitters();
     const myIds = Object.entries(subs).filter(([, a]) => a.toLowerCase() === u.address.toLowerCase()).map(([id]) => Number(id));
     const markets = db.markets.all().filter((m) => myIds.includes(m.id)).map((m) => ({ id: m.id, question: m.question, priceYes: m.priceYes, volume: m.volume, resolved: m.resolved }));
+    const { followersOf } = await import("./social.js");
     return {
-      user: { name: u.name, address: u.address, bio: u.bio ?? "", avatar: u.avatar || "/img/images.jpeg", verified: u.verified, country: u.country ?? null, createdAt: u.createdAt },
+      user: {
+        name: u.name, address: u.address, bio: u.bio ?? "", avatar: u.avatar || "/img/images.jpeg",
+        verified: u.verified, creator: !!u.creator, country: u.country ?? null, createdAt: u.createdAt,
+        followers: followersOf(u.address.toLowerCase()).length,
+      },
       markets,
     };
   });
@@ -304,12 +319,17 @@ export async function compatRoutes(app: FastifyInstance) {
   app.post<{ Body: any }>("/api/create-market", async (req, reply) => {
     const { question, description, category, image, closeTimeDays, creator, countries, restricted } = (req.body ?? {}) as any;
     if (!question || String(question).length < 6) return reply.code(400).send({ error: "question too short" });
+    // product rule: creators are granted via the admin API only (World ID = just a checkmark)
+    if (config.features.creatorViaAdmin) {
+      const cu = db.users.find((x) => x.address.toLowerCase() === String(creator ?? "").toLowerCase());
+      if (!cu?.creator) return reply.code(403).send({ error: "creator role required (granted by admin)" });
+    }
     const L = toUsdc(0.5); // small initial liquidity to stretch the faucet
     const days = Math.max(1, Math.min(365, Number(closeTimeDays) || 14));
     const closeTime = BigInt(Math.floor(Date.now() / 1000) + days * 86400);
     // country tags (e.g. ["US","GB"]) + restriction ride in the flexible metadata JSON — no schema change
     const countryTags = Array.isArray(countries) ? countries.map((c: any) => normCountry(c)).filter(Boolean).slice(0, 12) : [];
-    const isRestricted = !!restricted && countryTags.length > 0;
+    const isRestricted = config.features.countryGate && !!restricted && countryTags.length > 0;
     const metadataURI = JSON.stringify({ category: category || "general", description: description || "", image: image || "", countries: countryTags, restricted: isRestricted });
     try {
       // Path-B (audited Gnosis stack): create through MarketRegistry (market address = FPMM).
@@ -339,11 +359,13 @@ export async function compatRoutes(app: FastifyInstance) {
 
   // agents — public bots for everyone, plus the caller's own drafts (so they can publish)
   app.get<{ Querystring: { owner?: string } }>("/api/agents", async (req) => {
+    if (!config.features.agents) return { agents: [] }; // feature-flagged off for MVP
     const owner = String(req.query.owner ?? "").toLowerCase();
     const visible = db.agents.all().filter((a) => isPublicAgent(a) || (owner && a.ownerAddress.toLowerCase() === owner));
     return { agents: visible.map(toPublicAgent) };
   });
   app.post<{ Body: any }>("/api/agents", async (req, reply) => {
+    if (!config.features.agents) return reply.code(403).send({ error: "agents are disabled" });
     const body = (req.body ?? {}) as any;
     const r = await createAgentInternal({ name: body.name, preset: body.preset, ownerAddress: body.owner, budgetUsdc: body.budgetUsdc });
     if (!r.ok) return reply.code(r.code).send({ error: r.error, quota: (r as any).quota });
@@ -372,8 +394,12 @@ export async function compatRoutes(app: FastifyInstance) {
   });
 
   // reasoning feed (GET) + run tick (POST)
-  app.get("/api/agent/tick", async () => ({ feed: db.feed.all().filter((f) => f.kind === "agent").sort((a, b) => b.ts - a.ts).slice(0, 100).map(toFeedPost) }));
-  app.post<{ Body: any }>("/api/agent/tick", async (req) => {
+  app.get("/api/agent/tick", async () => {
+    if (!config.features.agents) return { feed: [] };
+    return { feed: db.feed.all().filter((f) => f.kind === "agent").sort((a, b) => b.ts - a.ts).slice(0, 100).map(toFeedPost) };
+  });
+  app.post<{ Body: any }>("/api/agent/tick", async (req, reply) => {
+    if (!config.features.agents) return reply.code(403).send({ error: "agents are disabled" });
     const { agentId } = (req.body ?? {}) as any;
     const id = agentId ?? db.agents.all().find(isPublicAgent)?.id;
     if (!id) return { action: "skip", reasoning: "no public agents", agent: "" };

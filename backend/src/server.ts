@@ -84,9 +84,11 @@ app.listen({ port, host: "0.0.0.0" }).then(() => {
   // Path-B (audited Gnosis CTF stack) when a MarketRegistry is deployed; legacy otherwise.
   if (config.registry) startCtfIndexer();
   else startIndexer();
-  // agent loop + auto-resolution crons (env AGENT_LOOP=off to disable)
+  // auto-resolution cron always runs; agent loop only when the agents feature is on
   if (process.env.AGENT_LOOP !== "off") {
-    setInterval(() => tickAllAgents().catch((e) => app.log.error("[agents] " + e.message)), 120_000);
+    if (config.features.agents) {
+      setInterval(() => tickAllAgents().catch((e) => app.log.error("[agents] " + e.message)), 120_000);
+    }
     setInterval(() => resolveDueMarkets().catch((e) => app.log.error("[resolve] " + e.message)), 120_000);
   }
 });
