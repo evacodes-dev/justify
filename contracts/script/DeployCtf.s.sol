@@ -53,6 +53,10 @@ contract DeployCtf is Script {
         registry.setResolver(address(resolver));
         registry.setVerifier(backend);
         registry.setCollateralAllowed(usdc, true);
+        // the backend is the on-chain market creator (creates on users' behalf). When the
+        // deployer IS the backend key we can self-register here; otherwise do it post-deploy
+        // from the backend key: registry.registerCreator(backend).
+        if (vm.addr(pk) == backend) registry.registerCreator(backend);
         resolver.setOracle(backend); // break-glass for beta; point at multisig for mainnet
         resolver.setGlobalModule(address(settler), true);
         settler.setProposer(backend, true);

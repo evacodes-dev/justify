@@ -58,3 +58,4 @@ backend/data/
 # vendored audited Gnosis artifacts are needed by tests/deploy — keep them tracked
 !contracts/vendor/out/
 !contracts/vendor/out/**
+backend/data-arc-backup*/

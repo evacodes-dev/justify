@@ -3,7 +3,7 @@
   "chainId": 84532,
   "rpc": "https://sepolia.base.org",
   "explorer": "https://sepolia.basescan.org",
-  "deployBlock": 0,
+  "deployBlock": 43872378,
   "backend": "0x199D2956A804d48804a9482240D03Dab0495F578",
   "nativeCurrency": {
     "name": "Ether",
@@ -11,13 +11,12 @@
     "decimals": 18
   },
   "contracts": {
-    "MarketFactory": "0x0000000000000000000000000000000000000000",
-    "Resolver": "0x0000000000000000000000000000000000000000",
-    "ConditionalTokens": "0x0000000000000000000000000000000000000000",
-    "FpmmFactory": "0x0000000000000000000000000000000000000000",
-    "MarketRegistry": "0x0000000000000000000000000000000000000000",
-    "OptimisticSettler": "0x0000000000000000000000000000000000000000",
-    "CREModule": "0x0000000000000000000000000000000000000000"
+    "Resolver": "0xB66741Fe9da3D70A986BF7A0646b6E19dcFDBdac",
+    "ConditionalTokens": "0x73FA4E26d22b4e2f1B68dD74b56bca62bDAdfbd7",
+    "FpmmFactory": "0xfB4138919e4583d1E17C679c5b00D4b3A75B7057",
+    "MarketRegistry": "0x90C69EdcB18F238594C974EA2a60067534622236",
+    "OptimisticSettler": "0xB35A5ee43f6B5770B56AF22064Fc0692BdFe134c",
+    "CREModule": "0x6f314CD6a9A0fc6836F9d960fc694b6e4aE418b7"
   },
   "collateral": {
     "USDC": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
