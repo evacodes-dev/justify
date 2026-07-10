@@ -7,7 +7,6 @@ import LanguageModal from '../modals/LanguageModal'
 import CommentModal from '../modals/CommentModal'
 import TradeModal from '../modals/TradeModal'
 import OnboardingModal from '../modals/OnboardingModal'
-import ApprovalsBanner from '../agents/ApprovalsBanner'
 import { useWideLayout } from './wideLayout'
 import { useAutoDotation } from '../../hooks/useAutoDotation'
 
@@ -36,7 +35,6 @@ export default function AppLayout() {
       <CommentModal />
       <TradeModal />
       <OnboardingModal />
-      <ApprovalsBanner />
     </>
   )
 }

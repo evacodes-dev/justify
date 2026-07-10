@@ -1,30 +1,35 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import RightSidebar from '../components/layout/RightSidebar'
 import AccountSlider from '../components/feed/AccountSlider'
 import AccountListItem from '../components/feed/AccountListItem'
 import MarketCard from '../components/market/MarketCard'
-import ReasoningFeed from '../components/feed/ReasoningFeed'
+import EventCard from '../components/feed/EventCard'
+import EmptyState from '../components/common/EmptyState'
 import { useMarkets, type MarketRow } from '../hooks/useMarkets'
 import { useCreators } from '../hooks/useCreators'
 import { toUiMarket } from '../lib/markets'
-import { nameOf } from '../lib/countries'
+import { getActivityFeed, type ActivityItem } from '../lib/api'
 import type { Account } from '../types'
 
-type Tab = 'feed' | 'agents' | 'people' | 'trending'
+type Tab = 'feed' | 'people' | 'trending'
 
 const tabs: { id: Tab; label: string }[] = [
   { id: 'feed', label: 'Markets' },
-  { id: 'agents', label: 'Agents' },
   { id: 'people', label: 'Creators' },
   { id: 'trending', label: 'Trending' },
 ]
 
 const uiOf = (m: MarketRow) =>
-  toUiMarket(m.demo, { yesPct: Math.round(m.api.priceYes * 100), total: m.api.volume, resolved: m.api.resolved })
+  toUiMarket(m.demo, { yesPct: Math.round(m.api.priceYes * 100), total: m.api.volume, resolved: m.api.resolved, likes: m.api.likes })
 
-function MarketGrid({ rows, sort, empty }: { rows: MarketRow[]; sort?: boolean; empty?: string }) {
-  const list = sort ? [...rows].sort((a, b) => b.api.volume - a.api.volume) : rows
-  if (!list.length) return <p className="text-muted text-center py-5">{empty ?? 'No markets yet — create the first one.'}</p>
+function MarketGrid({ rows, sort, empty }: { rows: MarketRow[]; sort?: boolean; empty?: { title: string; hint?: string } }) {
+  // Trending = client-side sort by volume, likes as the tie-breaker.
+  const list = sort
+    ? [...rows].sort((a, b) => (b.api.volume - a.api.volume) || ((b.api.likes ?? 0) - (a.api.likes ?? 0)))
+    : rows
+  if (!list.length) {
+    return <EmptyState icon="candlestick_chart" title={empty?.title ?? 'No markets yet'} hint={empty?.hint ?? 'New markets from creators will show up here.'} />
+  }
   return (
     <div className="feeds px-lg-3">
       {list.map((m) => <MarketCard key={m.demo.id} market={uiOf(m)} />)}
@@ -46,22 +51,32 @@ function PeopleSection({ title, accounts }: { title: string; accounts: Account[]
   )
 }
 
+// Recent human trades + oracle resolutions (agent noise filtered out).
+function ActivitySection({ accounts }: { accounts: Account[] }) {
+  const [items, setItems] = useState<ActivityItem[]>([])
+  useEffect(() => {
+    let alive = true
+    const load = () =>
+      getActivityFeed()
+        .then((b) => { if (alive) setItems((b.feed ?? []).filter((f) => f.kind !== 'agent').slice(0, 12)) })
+        .catch(() => {})
+    load()
+    const t = setInterval(load, 15_000)
+    return () => { alive = false; clearInterval(t) }
+  }, [])
+  if (!items.length) return null
+  return (
+    <div className="mb-3">
+      <h6 className="fw-bold text-body mb-2 px-lg-3">Recent activity</h6>
+      {items.map((item) => <EventCard key={item.id} item={item} accounts={accounts} />)}
+    </div>
+  )
+}
+
 export default function FeedPage() {
   const [activeTab, setActiveTab] = useState<Tab>('feed')
-  const [countryFilter, setCountryFilter] = useState<string | null>(null)
   const { markets, loading } = useMarkets()
   const creators = useCreators()
-
-  // Country codes present across current markets (only politics markets carry them).
-  const presentCountries = useMemo(() => {
-    const s = new Set<string>()
-    markets.forEach((m) => (m.demo.countries ?? []).forEach((c) => s.add(c)))
-    return [...s]
-  }, [markets])
-
-  const visibleMarkets = countryFilter
-    ? markets.filter((m) => (m.demo.countries ?? []).includes(countryFilter))
-    : markets
 
   return (
     <>
@@ -93,48 +108,20 @@ export default function FeedPage() {
                     <AccountSlider accounts={creators} />
                   </div>
                 )}
-                {presentCountries.length > 0 && (
-                  <div className="d-flex flex-wrap gap-2 px-lg-3 mb-3 align-items-center">
-                    <span className="text-muted small me-1">Country:</span>
-                    <button
-                      type="button"
-                      className={`btn btn-sm rounded-pill ${!countryFilter ? 'btn-primary' : 'btn-outline-secondary text-body'}`}
-                      onClick={() => setCountryFilter(null)}
-                    >
-                      All
-                    </button>
-                    {presentCountries.map((code) => (
-                      <button
-                        type="button"
-                        key={code}
-                        title={nameOf(code)}
-                        className={`btn btn-sm rounded-pill ${countryFilter === code ? 'btn-primary' : 'btn-outline-secondary text-body'}`}
-                        onClick={() => setCountryFilter((cur) => (cur === code ? null : code))}
-                      >
-                        {nameOf(code)}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <ActivitySection accounts={creators} />
                 {loading ? (
                   <div className="text-center py-5"><div className="spinner-border" role="status" /></div>
                 ) : (
-                  <MarketGrid
-                    rows={visibleMarkets}
-                    empty={countryFilter ? `No markets for ${nameOf(countryFilter)} yet.` : undefined}
-                  />
+                  <MarketGrid rows={markets} />
                 )}
-              </div>
-            )}
-            {activeTab === 'agents' && (
-              <div className="tab-pane fade show active" role="tabpanel">
-                <ReasoningFeed />
               </div>
             )}
             {activeTab === 'people' && (
               <div className="tab-pane fade show active" role="tabpanel">
                 <PeopleSection title="Verified creators" accounts={creators} />
-                {creators.length === 0 && <p className="text-muted text-center py-5">No creators yet — verify with World ID to become one.</p>}
+                {creators.length === 0 && (
+                  <EmptyState icon="group" title="No creators yet" hint="Verified creators will appear here once they join." />
+                )}
               </div>
             )}
             {activeTab === 'trending' && (
@@ -142,7 +129,7 @@ export default function FeedPage() {
                 {loading ? (
                   <div className="text-center py-5"><div className="spinner-border" role="status" /></div>
                 ) : (
-                  <MarketGrid rows={markets} sort />
+                  <MarketGrid rows={markets} sort empty={{ title: 'Nothing trending yet', hint: 'Markets ranked by volume and likes will show up here.' }} />
                 )}
               </div>
             )}

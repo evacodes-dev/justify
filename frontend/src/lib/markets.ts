@@ -1,11 +1,40 @@
-// Live FPMM markets on Arc testnet (deployed via MarketFactory — see
-// contracts/deployments/arc-testnet.json). These are REAL on-chain markets with a
-// live constant-product price; trades send a real approve+buy via the Dynamic wallet.
-export const ARC = {
-  chainId: 5042002,
-  rpc: 'https://rpc.testnet.arc.network',
-  usdc: '0x3600000000000000000000000000000000000000' as `0x${string}`,
-  explorer: 'https://testnet.arcscan.app',
+// On-chain trading layer: audited Gnosis CTF (ConditionalTokens, ERC-1155) +
+// FixedProductMarketMaker on Base. `market.address` from /api/markets is the FPMM.
+// Chain + contract addresses come from the backend `GET /config`; the defaults below
+// mirror contracts/deployments/base-sepolia.json so reads work before it answers.
+export interface ChainConfig {
+  chainId: number
+  rpc: string
+  explorer: string
+  registry?: `0x${string}`
+  ctf: `0x${string}`
+  resolver?: `0x${string}`
+  settler?: `0x${string}`
+  usdc: `0x${string}`
+  usdcDecimals: number
+}
+
+export const CHAIN: ChainConfig = {
+  chainId: 84532,
+  rpc: 'https://sepolia.base.org',
+  explorer: 'https://sepolia.basescan.org',
+  ctf: '0x73FA4E26d22b4e2f1B68dD74b56bca62bDAdfbd7',
+  usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+  usdcDecimals: 6,
+}
+
+let configPromise: Promise<ChainConfig> | null = null
+// Fetch /config once and merge into CHAIN (mutated in place so sync readers like
+// txUrl pick up the deployed values after the first await).
+export function ensureConfig(): Promise<ChainConfig> {
+  if (!configPromise) {
+    const base = import.meta.env.VITE_API_BASE ?? ''
+    configPromise = fetch(`${base}/config`)
+      .then((r) => r.json())
+      .then((c) => Object.assign(CHAIN, c))
+      .catch(() => CHAIN) // backend down — keep deployment defaults
+  }
+  return configPromise
 }
 
 export type DemoMarket = {
@@ -20,30 +49,20 @@ export type DemoMarket = {
   yesLabel?: string
   noLabel?: string
   category?: string
-  countries?: string[] // ISO-2 codes (politics markets)
-  restricted?: boolean // betting limited to `countries`
 }
-
-// Seed FPMM markets (Factory ids 0..2). New markets created via /api/create-market
-// can be loaded dynamically later; these cover the demo.
-export const DEMO_MARKETS: DemoMarket[] = [
-  { id: 0, address: '0xccc94f54f25ebfeE04AEeEdbFd4F1e39221526E6', question: 'Will ETH close above $5,000 on 2026-07-01?', emoji: 'Ξ', gradient: 'linear-gradient(135deg,#627eea,#1b1f3b)', author: 'justify', tags: '#crypto #eth', thumb: '/img/ETHfullsize.webp' },
-  { id: 2, address: '0x82329d3d14496CEfcBc46c47FF848736FeaC262a', question: 'Will BTC close above $200,000 in 2026?', emoji: '₿', gradient: 'linear-gradient(135deg,#f7931a,#7a3e00)', author: 'justify', tags: '#crypto #btc', thumb: '/img/will-microstrategy-purchase-bitcoin-july-1-7-mzoE5TYk_cCI.webp' },
-  { id: 1, address: '0x93773f04Bc513d9eeEE476953c1c83DB76610e62', question: 'Will the Fed cut rates at the July 2026 meeting?', emoji: '%', gradient: 'linear-gradient(135deg,#455a64,#15202b)', author: 'justify', tags: '#macro #fed', thumb: '/img/post1.png' },
-]
 
 // Map a real on-chain market (+ optional live state) into the existing justify-latest
 // `Market` UI shape, so the original components render it unchanged with real data.
 export function toUiMarket(
   m: DemoMarket,
-  state?: { yesPct: number; total: number; resolved: boolean },
+  state?: { yesPct: number; total: number; resolved: boolean; likes?: number },
 ): import('../types').Market {
   const yesPct = state?.yesPct ?? 50
   const total = state?.total ?? 0
   return {
     id: String(m.id),
     title: m.question,
-    description: state?.resolved ? 'Resolved · live on Arc' : 'Binary FPMM · live on Arc',
+    description: state?.resolved ? 'Resolved · on-chain' : 'Binary FPMM · on-chain',
     thumb: m.thumb,
     volume: `$${total.toFixed(2)} Vol.`,
     endTime: m.tags ?? '',
@@ -52,20 +71,17 @@ export function toUiMarket(
     noLabel: m.noLabel ?? 'No',
     yesPrice: yesPct / 100,
     noPrice: (100 - yesPct) / 100,
-    countries: m.countries,
+    likes: state?.likes ?? 0,
   }
 }
 
-export const getMarket = (id: number | string) =>
-  DEMO_MARKETS.find((m) => String(m.id) === String(id))
-
-export const getMarketByAddress = (address: string) =>
-  DEMO_MARKETS.find((m) => m.address.toLowerCase() === address.toLowerCase())
-
-// ─── dynamic markets from the backend (real FPMM markets, incl. user-created) ───
+// ─── dynamic markets from the backend (real CTF/FPMM markets, incl. user-created) ───
 export type ApiMarket = {
   id: number; address: `0x${string}`; question: string; metadataURI: string;
-  priceYes: number; volume: number; resolved: boolean; outcome?: number; closeTime: number; creator: string; creatorName?: string
+  priceYes: number; volume: number; resolved: boolean; outcome?: number; closeTime: number;
+  creator: string; creatorName?: string; likes: number;
+  // Gnosis CTF fields (null on legacy rows): ERC-1155 position ids are decimal strings.
+  conditionId: `0x${string}` | null; posYes: string | null; posNo: string | null
 }
 
 // Derive a card emoji/thumb/tags from the question + metadata category.
@@ -82,15 +98,11 @@ function derive(question: string, category: string): Pick<DemoMarket, 'emoji' | 
 
 export function apiMarketToDemo(m: ApiMarket): DemoMarket {
   let category = 'general'
-  let countries: string[] = []
-  let restricted = false
   try {
     const meta = JSON.parse(m.metadataURI || '{}')
     category = meta.category || 'general'
-    countries = Array.isArray(meta.countries) ? meta.countries.map((c: any) => String(c)) : []
-    restricted = !!meta.restricted
   } catch { /* legacy uri */ }
-  return { id: m.id, address: m.address, question: m.question, author: m.creatorName || 'justify', category, countries, restricted, ...derive(m.question, category) }
+  return { id: m.id, address: m.address, question: m.question, author: m.creatorName || 'justify', category, ...derive(m.question, category) }
 }
 
 export async function fetchMarkets(): Promise<{ demo: DemoMarket; api: ApiMarket }[]> {
@@ -107,17 +119,18 @@ export const USDC_ABI = [
   { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const
 
-// Binary FPMM Market ABI (src/Market.sol). `buy(outcome, amount)`: outcome 1=YES, 0=NO.
-// reserves() returns (yes, no); priceYes() is the YES probability scaled to 1e18.
-export const MARKET_ABI = [
-  { type: 'function', name: 'buy', stateMutability: 'nonpayable', inputs: [{ type: 'uint8', name: 'outcome' }, { type: 'uint256', name: 'amountIn' }], outputs: [{ type: 'uint256' }] },
-  { type: 'function', name: 'redeem', stateMutability: 'nonpayable', inputs: [], outputs: [{ type: 'uint256' }] },
-  { type: 'function', name: 'priceYes', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
-  { type: 'function', name: 'reserves', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256', name: 'yes' }, { type: 'uint256', name: 'no' }] },
-  { type: 'function', name: 'resolved', stateMutability: 'view', inputs: [], outputs: [{ type: 'bool' }] },
-  { type: 'function', name: 'winningOutcome', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
-  { type: 'function', name: 'resolutionReason', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
-  { type: 'function', name: 'question', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
-  { type: 'function', name: 'balances', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'uint8' }], outputs: [{ type: 'uint256' }] },
-  { type: 'function', name: 'previewPayout', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
+// Gnosis FixedProductMarketMaker. outcomeIndex: 0 = NO, 1 = YES.
+export const FPMM_ABI = [
+  { type: 'function', name: 'calcBuyAmount', stateMutability: 'view', inputs: [{ type: 'uint256', name: 'investmentAmount' }, { type: 'uint256', name: 'outcomeIndex' }], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'calcSellAmount', stateMutability: 'view', inputs: [{ type: 'uint256', name: 'returnAmount' }, { type: 'uint256', name: 'outcomeIndex' }], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'buy', stateMutability: 'nonpayable', inputs: [{ type: 'uint256', name: 'investmentAmount' }, { type: 'uint256', name: 'outcomeIndex' }, { type: 'uint256', name: 'minOutcomeTokensToBuy' }], outputs: [] },
+  { type: 'function', name: 'sell', stateMutability: 'nonpayable', inputs: [{ type: 'uint256', name: 'returnAmount' }, { type: 'uint256', name: 'outcomeIndex' }, { type: 'uint256', name: 'maxOutcomeTokensToSell' }], outputs: [] },
+] as const
+
+// Gnosis ConditionalTokens (ERC-1155 positions).
+export const CTF_ABI = [
+  { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'uint256' }], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'setApprovalForAll', stateMutability: 'nonpayable', inputs: [{ type: 'address' }, { type: 'bool' }], outputs: [] },
+  { type: 'function', name: 'isApprovedForAll', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'bool' }] },
+  { type: 'function', name: 'redeemPositions', stateMutability: 'nonpayable', inputs: [{ type: 'address', name: 'collateralToken' }, { type: 'bytes32', name: 'parentCollectionId' }, { type: 'bytes32', name: 'conditionId' }, { type: 'uint256[]', name: 'indexSets' }], outputs: [] },
 ] as const

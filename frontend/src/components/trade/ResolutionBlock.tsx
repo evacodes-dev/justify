@@ -1,51 +1,59 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { DemoMarket } from '../../lib/markets'
-import { readPosition, claimMarket, txUrl } from '../../lib/arc'
+import { useEffect, useState } from 'react'
+import type { ApiMarket } from '../../lib/markets'
+import { redeemPositions, redeemValue, txUrl } from '../../lib/arc'
+import { useCtfShares } from '../../hooks/useArcMarket'
 import { getResolution, type Resolution } from '../../lib/api'
 import { useWallet } from '../../hooks/useWallet'
 import { useToast } from '../common/Toast'
 import ChainlinkBadge from '../market/ChainlinkBadge'
 
-type Pos = Awaited<ReturnType<typeof readPosition>>
-
-// Market-detail resolution + redeem (TZ Part 1 — Market Page): outcome +
-// justification (CRE/LLM, from backend) + redeem for winners. Same bg-glass style.
-export default function ResolutionBlock({ market }: { market: DemoMarket }) {
-  const { address, getArcWalletClient } = useWallet()
+// Market-detail resolution block over the Gnosis CTF:
+// - closed but not finalized → "resolving…" state (optimistic settler challenge window)
+// - resolved → outcome + oracle justification + redeemPositions for winners/INVALID.
+export default function ResolutionBlock({ market }: { market: ApiMarket }) {
+  const { address, getChainWalletClient } = useWallet()
   const toast = useToast()
-  const [pos, setPos] = useState<Pos | null>(null)
+  const { shares, refresh } = useCtfShares(market, address)
   const [resolution, setResolution] = useState<Resolution | null>(null)
   const [claiming, setClaiming] = useState(false)
-
-  const load = useCallback(() => {
-    if (!address) {
-      setPos(null)
-      return
-    }
-    readPosition(market.address, address).then(setPos).catch(() => {})
-  }, [address, market.address])
+  const [claimedTx, setClaimedTx] = useState('')
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (market.resolved) getResolution(market.id).then(setResolution).catch(() => {})
+  }, [market.id, market.resolved])
 
-  useEffect(() => {
-    getResolution(market.id).then(setResolution).catch(() => {})
-  }, [market.id])
+  const closed = market.closeTime > 0 && market.closeTime * 1000 < Date.now()
 
-  // Only render once the market is resolved on-chain.
-  if (!pos?.resolved) return null
+  // Between closeTime and finalization: subjective markets sit in the 2h public
+  // challenge window (Optimistic Settler) — show a generic resolving state.
+  if (!market.resolved) {
+    if (!closed) return null
+    return (
+      <div className="px-lg-3 pb-3">
+        <div className="bg-glass rounded-4 shadow-sm p-3 d-flex align-items-center">
+          <span className="material-icons text-warning me-2">hourglass_top</span>
+          <div>
+            <p className="text-body fw-bold mb-0">Resolving…</p>
+            <p className="text-muted small mb-0">Resolution proposed — public challenge window before the outcome finalizes.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
-  const wonSide = pos.outcome === 1 ? 'YES' : pos.outcome === 0 ? 'NO' : '—'
-  const canRedeem = pos.payout > 0
+  const wonSide = market.outcome === 1 ? 'YES' : market.outcome === 0 ? 'NO' : 'INVALID'
+  const payout = redeemValue(market.outcome, shares?.yesShares ?? 0, shares?.noShares ?? 0)
+  const canRedeem = payout > 0 && !!market.conditionId && !claimedTx
 
   const redeem = async () => {
+    if (!market.conditionId) return
     setClaiming(true)
     try {
-      const wc = await getArcWalletClient()
-      const hash = await claimMarket(wc, market.address)
-      toast.show(`Redeemed $${pos.payout.toFixed(2)} USDC`, { kind: 'success', href: txUrl(hash), hrefLabel: 'View tx on Arcscan ↗' })
-      load()
+      const wc = await getChainWalletClient()
+      const hash = await redeemPositions(wc, market.conditionId)
+      setClaimedTx(hash)
+      toast.show(`Redeemed $${payout.toFixed(2)} USDC`, { kind: 'success', href: txUrl(hash), hrefLabel: 'View tx ↗' })
+      refresh()
     } catch (e: any) {
       toast.show(e?.shortMessage || e?.message || 'Redeem failed', { kind: 'error' })
     } finally {
@@ -63,7 +71,9 @@ export default function ResolutionBlock({ market }: { market: DemoMarket }) {
           ) : resolution?.oracle === 'claude' ? (
             <span className="badge bg-secondary">AI oracle (Claude)</span>
           ) : null}
-          <span className={`badge ${wonSide === 'YES' ? 'bg-success' : 'bg-danger'}`}>Resolved · {wonSide}</span>
+          <span className={`badge ${wonSide === 'YES' ? 'bg-success' : wonSide === 'NO' ? 'bg-danger' : 'bg-warning text-dark'}`}>
+            Resolved · {wonSide}
+          </span>
         </div>
         {resolution?.rationale ? (
           <p className="text-muted small mb-2" style={{ whiteSpace: 'pre-wrap' }}>{resolution.rationale}</p>
@@ -81,8 +91,13 @@ export default function ResolutionBlock({ market }: { market: DemoMarket }) {
         </div>
         {canRedeem && (
           <button className="btn btn-primary rounded-4 w-100 mt-3 fw-bold" disabled={claiming} onClick={redeem}>
-            {claiming ? 'Redeeming…' : `Redeem $${pos.payout.toFixed(2)} USDC`}
+            {claiming ? 'Redeeming…' : `Redeem $${payout.toFixed(2)} USDC`}
           </button>
+        )}
+        {claimedTx && (
+          <p className="mt-2 mb-0 small text-success">
+            Redeemed · <a href={txUrl(claimedTx)} target="_blank" rel="noreferrer" className="text-success">view tx ↗</a>
+          </p>
         )}
       </div>
     </div>

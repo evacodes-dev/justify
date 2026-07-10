@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import VerifiedBadge from '../common/VerifiedBadge'
+import FollowButton from '../common/FollowButton'
 import type { PublicUser, UserMarket } from '../../lib/api'
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
@@ -7,6 +9,8 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 // Real profile header (connected user or any creator). Markets = the markets they created.
 export default function ProfileHeader({ user, markets, isMe }: { user: PublicUser; markets: UserMarket[]; isMe?: boolean }) {
   const joined = new Date(user.createdAt || Date.now()).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+  const [followers, setFollowers] = useState(user.followers ?? 0)
+  useEffect(() => { setFollowers(user.followers ?? 0) }, [user.followers])
   return (
     <div className="border-bottom py-3 px-lg-3">
       <div className="bg-glass rounded-4 shadow-sm profile">
@@ -17,13 +21,16 @@ export default function ProfileHeader({ user, markets, isMe }: { user: PublicUse
             <p className="text-muted mb-0">@{user.name}</p>
           </div>
           <div className="ms-auto">
-            {isMe && <Link to="/edit-profile" className="btn btn-outline-secondary btn-sm rounded-4">Edit</Link>}
+            {isMe
+              ? <Link to="/edit-profile" className="btn btn-outline-secondary btn-sm rounded-4">Edit</Link>
+              : <FollowButton target={user.name || user.address} onToggled={(_, n) => setFollowers(n)} />}
           </div>
         </div>
         <div className="p-3">
           {user.bio && <p className="mb-2 fs-6 text-body">{user.bio}</p>}
           <p className="d-flex align-items-center flex-wrap mb-2 text-muted small gap-3">
             <span className="d-flex align-items-center"><span className="material-icons me-1 md-16">calendar_today</span>Joined {joined}</span>
+            <span><b className="text-body">{followers}</b> follower{followers === 1 ? '' : 's'}</span>
             <span><b className="text-body">{markets.length}</b> market{markets.length === 1 ? '' : 's'} created</span>
             {user.verified && <span className="text-success">✓ verified human</span>}
           </p>

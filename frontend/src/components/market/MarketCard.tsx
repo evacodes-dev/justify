@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { Market } from '../../types'
-import { nameOf } from '../../lib/countries'
 import ChanceArc from './ChanceArc'
+import LikeButton from '../common/LikeButton'
 
 type Side = 'yes' | 'no'
 
@@ -35,14 +35,10 @@ export default function MarketCard({ market }: { market: Market }) {
                   <Link to={tradeHref}>{market.title}</Link>
                 </div>
                 <div className="market-description">{market.description}</div>
-                <div className="market-meta">
+                <div className="market-meta d-flex align-items-center gap-2">
                   <span className="market-volume">{market.volume}</span>
                   <span className="market-time">{market.endTime}</span>
-                  {market.countries && market.countries.length > 0 && (
-                    <span className="market-countries">
-                      {market.countries.map(nameOf).join(', ')}
-                    </span>
-                  )}
+                  <LikeButton marketId={market.id} initialCount={market.likes} />
                 </div>
               </div>
               <div className="market-chance">

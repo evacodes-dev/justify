@@ -12,4 +12,5 @@ export const elClasicoMarket: Market = {
   noLabel: 'RealMadrid',
   yesPrice: 0.21,
   noPrice: 0.8,
+  likes: 0,
 }

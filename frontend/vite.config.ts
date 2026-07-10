@@ -12,6 +12,16 @@ export default defineConfig({
         target: process.env.VITE_API_PROXY ?? 'http://localhost:8787',
         changeOrigin: true,
       },
+      // chain/contract addresses for the CTF trading layer
+      '/config': {
+        target: process.env.VITE_API_PROXY ?? 'http://localhost:8787',
+        changeOrigin: true,
+      },
+      // activity feed (trades + resolutions)
+      '/feed': {
+        target: process.env.VITE_API_PROXY ?? 'http://localhost:8787',
+        changeOrigin: true,
+      },
     },
   },
 })

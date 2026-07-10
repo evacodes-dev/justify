@@ -3,39 +3,52 @@ import Modal from 'react-bootstrap/Modal'
 import { useUi } from '../layout/UiContext'
 import { useWallet } from '../../hooks/useWallet'
 import { useToast } from '../common/Toast'
-import { approveAndBet, txUrl } from '../../lib/arc'
+import { buyShares, sellShares, quoteBuy, quoteSell, txUrl } from '../../lib/arc'
 
-// Trade modal (TZ Part 1 — "Buy YES/NO → trade modal"): USDC amount → client-side
-// shares/payout preview → approve USDC + buy on Arc → tx success. Same
-// bg-brown-gradient / bg-glass styling as PostModal.
+// Trade modal over the Gnosis FPMM. Buy: USDC in → outcome shares (2% slippage
+// guard via calcBuyAmount). Sell: USDC out ← shares burned (calcSellAmount).
 export default function TradeModal() {
   const { activeModal, closeModal, tradeTarget } = useUi()
-  const { isLoggedIn, promptLogin, getArcWalletClient } = useWallet()
+  const { isLoggedIn, promptLogin, getChainWalletClient } = useWallet()
   const toast = useToast()
 
   const [side, setSide] = useState<0 | 1>(1)
+  const [mode, setMode] = useState<'buy' | 'sell'>('buy')
   const [amount, setAmount] = useState('0.5')
   const [phase, setPhase] = useState<'idle' | 'signing'>('idle')
+  const [quote, setQuote] = useState<number | null>(null) // buy: shares out; sell: shares to burn
 
-  // Sync the side selector with whatever Buy button opened the modal.
+  // Sync with whatever button opened the modal.
   useEffect(() => {
     if (tradeTarget) {
       setSide(tradeTarget.side)
+      setMode(tradeTarget.mode)
       setAmount('0.5')
       setPhase('idle')
     }
   }, [tradeTarget])
 
+  const fpmm = tradeTarget?.market.address
+  const a = parseFloat(amount)
+
+  // Live on-chain quote (debounced) — the source of truth for the preview.
+  useEffect(() => {
+    setQuote(null)
+    if (!fpmm || !(a > 0)) return
+    const t = setTimeout(() => {
+      const q = mode === 'buy' ? quoteBuy(fpmm, side, a) : quoteSell(fpmm, side, a)
+      q.then(setQuote).catch(() => setQuote(null))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [fpmm, side, mode, a])
+
   if (!tradeTarget) return null
 
   const yesPct = tradeTarget.yesPct
-  const a = parseFloat(amount)
-  // DemoMarket is a binary 1:1 stake pool (matches the contract — no AMM curve):
-  // shares = amount; price = pool-implied probability; payout if correct = stake/price.
   const price = side === 1 ? yesPct / 100 : (100 - yesPct) / 100
-  const shares = a > 0 ? a : 0
-  const payout = price > 0 && a > 0 ? a / price : 0
-  const priceImpact = 0 // flat 1:1 pool — no slippage in the demo contract
+  // Fallback preview from the spot price until the on-chain quote lands.
+  const estShares = quote ?? (price > 0 && a > 0 ? a / price : 0)
+  const avgPrice = estShares > 0 && a > 0 ? a / estShares : price
 
   const confirm = async () => {
     if (!isLoggedIn) {
@@ -45,13 +58,22 @@ export default function TradeModal() {
     if (!(a > 0)) return
     setPhase('signing')
     try {
-      const wc = await getArcWalletClient()
-      const { betHash } = await approveAndBet(wc, tradeTarget.address, side, a)
-      toast.show(`Bet placed: ${side === 1 ? 'YES' : 'NO'} · ${a} USDC`, {
-        kind: 'success',
-        href: txUrl(betHash),
-        hrefLabel: 'View tx on Arcscan ↗',
-      })
+      const wc = await getChainWalletClient()
+      if (mode === 'buy') {
+        const { betHash } = await buyShares(wc, tradeTarget.market.address, side, a)
+        toast.show(`Bought ${side === 1 ? 'YES' : 'NO'} for ${a} USDC`, {
+          kind: 'success',
+          href: txUrl(betHash),
+          hrefLabel: 'View tx ↗',
+        })
+      } else {
+        const { sellHash } = await sellShares(wc, tradeTarget.market.address, side, a)
+        toast.show(`Sold ${side === 1 ? 'YES' : 'NO'} for ${a} USDC`, {
+          kind: 'success',
+          href: txUrl(sellHash),
+          hrefLabel: 'View tx ↗',
+        })
+      }
       closeModal()
     } catch (e: any) {
       toast.show(e?.shortMessage || e?.message || 'Transaction failed', { kind: 'error' })
@@ -68,7 +90,7 @@ export default function TradeModal() {
       contentClassName="rounded-4 shadow-sm p-4 border-0 bg-brown-gradient"
     >
       <div className="modal-header d-flex align-items-center justify-content-between border-0 p-0 mb-3">
-        <h5 className="modal-title text-body fw-bold mb-0">Place a bet</h5>
+        <h5 className="modal-title text-body fw-bold mb-0">{mode === 'buy' ? 'Place a bet' : 'Sell position'}</h5>
         <a
           href="#"
           className="text-white text-decoration-none material-icons"
@@ -78,7 +100,7 @@ export default function TradeModal() {
         </a>
       </div>
 
-      <p className="text-body fw-bold mb-3">{tradeTarget.question}</p>
+      <p className="text-body fw-bold mb-3">{tradeTarget.market.question}</p>
 
       <div className="d-flex gap-2 mb-3">
         <button
@@ -110,26 +132,37 @@ export default function TradeModal() {
           disabled={phase === 'signing'}
           onChange={(e) => setAmount(e.target.value)}
         />
-        <label htmlFor="tradeAmount" className="text-muted">Amount (USDC)</label>
+        <label htmlFor="tradeAmount" className="text-muted">
+          {mode === 'buy' ? 'Amount to spend (USDC)' : 'Amount to receive (USDC)'}
+        </label>
       </div>
 
       <div className="bg-glass rounded-4 p-3 mb-3 small">
         <div className="d-flex justify-content-between mb-1">
-          <span className="text-muted">Est. shares</span>
-          <span className="text-body">{shares > 0 ? shares.toFixed(2) : '—'}</span>
+          <span className="text-muted">{mode === 'buy' ? 'Est. shares' : 'Shares to sell (max)'}</span>
+          <span className="text-body">{estShares > 0 ? estShares.toFixed(2) : '—'}</span>
         </div>
         <div className="d-flex justify-content-between mb-1">
           <span className="text-muted">Avg price</span>
-          <span className="text-body">{price > 0 ? `${Math.round(price * 100)}¢` : '—'}</span>
+          <span className="text-body">{avgPrice > 0 ? `${Math.round(avgPrice * 100)}¢` : '—'}</span>
         </div>
-        <div className="d-flex justify-content-between mb-1">
-          <span className="text-muted">Price impact</span>
-          <span className="text-body">{priceImpact}%</span>
-        </div>
-        <div className="d-flex justify-content-between">
-          <span className="text-muted">To win (if correct)</span>
-          <span className="text-success fw-bold">${payout > 0 ? payout.toFixed(2) : '0.00'}</span>
-        </div>
+        {mode === 'buy' ? (
+          <>
+            <div className="d-flex justify-content-between mb-1">
+              <span className="text-muted">Slippage tolerance</span>
+              <span className="text-body">2%</span>
+            </div>
+            <div className="d-flex justify-content-between">
+              <span className="text-muted">To win (if correct)</span>
+              <span className="text-success fw-bold">${estShares > 0 ? estShares.toFixed(2) : '0.00'}</span>
+            </div>
+          </>
+        ) : (
+          <div className="d-flex justify-content-between">
+            <span className="text-muted">You receive</span>
+            <span className="text-success fw-bold">${a > 0 ? a.toFixed(2) : '0.00'}</span>
+          </div>
+        )}
       </div>
 
       <button
@@ -138,10 +171,12 @@ export default function TradeModal() {
         onClick={confirm}
       >
         {phase === 'signing'
-          ? 'Signing approve + buy…'
+          ? (mode === 'buy' ? 'Signing approve + buy…' : 'Signing approve + sell…')
           : isLoggedIn
-            ? `Approve + Buy ${side === 1 ? 'YES' : 'NO'} · real tx on Arc`
-            : 'Connect wallet to bet'}
+            ? mode === 'buy'
+              ? `Approve + Buy ${side === 1 ? 'YES' : 'NO'}`
+              : `Approve + Sell ${side === 1 ? 'YES' : 'NO'}`
+            : 'Connect wallet to trade'}
       </button>
     </Modal>
   )

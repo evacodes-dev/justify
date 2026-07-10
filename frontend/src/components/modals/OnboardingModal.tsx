@@ -146,7 +146,7 @@ export default function OnboardingModal() {
         <div className="text-center">
           <div className="mb-2"><span className="material-icons text-success" style={{ fontSize: 44 }}>check_circle</span></div>
           <p className="text-body fw-bold mb-1">You're verified</p>
-          <p className="text-muted small mb-3">You can now create markets and trade as a verified human.</p>
+          <p className="text-muted small mb-3">You now have the verified-human checkmark and can trade on Justify.</p>
           <button className="btn btn-primary rounded-5 w-100 py-3 fw-bold" onClick={closeModal}>Done</button>
         </div>
       )}

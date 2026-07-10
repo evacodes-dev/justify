@@ -2,11 +2,13 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 
 export type ModalName = 'post' | 'language' | 'comment' | 'trade' | 'onboard' | null
 
-// Target for the trade modal: a real on-chain market + the chosen side.
+import type { ApiMarket } from '../../lib/markets'
+
+// Target for the trade modal: a real on-chain market + the chosen side and direction.
 export interface TradeTarget {
-  address: `0x${string}`
-  question: string
+  market: ApiMarket
   side: 0 | 1
+  mode: 'buy' | 'sell'
   yesPct: number
 }
 

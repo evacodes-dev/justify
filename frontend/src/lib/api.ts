@@ -1,13 +1,12 @@
-// Thin client for the server-only flows that still live in the Next.js `app`
-// backend (create-market, dotation, …). These need server secrets (faucet key,
-// Anthropic key, file stores) so they cannot run in this SPA.
+// Thin client for the Fastify backend (`backend/`). These flows need server
+// secrets (deployer key, Anthropic key, file stores) so they cannot run in this SPA.
 //
 // In dev, Vite proxies `/api/*` to the backend (see vite.config.ts). Override
 // the target with VITE_API_BASE (e.g. an absolute URL) when deploying.
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 export class ApiUnavailableError extends Error {
-  constructor(message = 'Backend API is not reachable. Start the `app` Next.js server (npm run dev in /app).') {
+  constructor(message = 'Backend API is not reachable. Start the backend server (npm start in /backend).') {
     super(message)
     this.name = 'ApiUnavailableError'
   }
@@ -29,9 +28,9 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
-// POST /api/create-market — deploys a real FPMM market on Arc.
+// POST /api/create-market — deploys a real CTF/FPMM market (creator role required).
 export function createMarket(input: {
-  question: string; description?: string; category?: string; closeTimeDays?: number; creator?: string; countries?: string[]; restricted?: boolean
+  question: string; description?: string; category?: string; closeTimeDays?: number; creator?: string
 }) {
   return apiFetch<{ address: string; question: string; id: number; explorer: string; deployTx: string }>(
     '/api/create-market',
@@ -39,10 +38,6 @@ export function createMarket(input: {
   )
 }
 
-export interface CanBet { allowed: boolean; restricted?: boolean; countries?: string[]; userCountry?: string | null; reason?: string }
-export function getCanBet(id: number | string, address?: string) {
-  return apiFetch<CanBet>(`/api/can-bet/${id}${address ? `?address=${address}` : ''}`)
-}
 export interface ChainlinkPrice { asset: string; price: number; feed: string; updatedAt: number; network: string; explorer: string }
 export function getChainlinkPrice(asset: string) {
   return apiFetch<ChainlinkPrice>(`/api/chainlink/${asset}`)
@@ -56,7 +51,8 @@ export function getMarketHistory(id: number | string, range: ChartRange = 'ALL')
   return apiFetch<MarketHistory>(`/api/markets/${id}/history?range=${range}`)
 }
 
-export interface PublicUser { name: string; address: string; bio?: string; avatar?: string; verified: boolean; country?: string | null; createdAt: number }
+// `creator` is an admin-granted role (World ID verify = just the checkmark).
+export interface PublicUser { name: string; address: string; bio?: string; avatar?: string; verified: boolean; creator?: boolean; followers?: number; createdAt: number }
 export interface UserMarket { id: number; question: string; priceYes: number; volume: number; resolved: boolean }
 export function getUser(key: string) {
   return apiFetch<{ user: PublicUser; markets: UserMarket[] }>(`/api/user/${key}`)
@@ -64,13 +60,13 @@ export function getUser(key: string) {
 
 // profile (settings)
 export function getMe(address: string) {
-  return apiFetch<{ user: { name: string; address: string; bio?: string; avatar?: string; verified: boolean; country?: string | null } | null }>(`/api/me?address=${address}`)
+  return apiFetch<{ user: { name: string; address: string; bio?: string; avatar?: string; verified: boolean; creator?: boolean } | null }>(`/api/me?address=${address}`)
 }
-export function updateProfile(input: { address: string; name?: string; bio?: string; avatar?: string; country?: string }) {
+export function updateProfile(input: { address: string; name?: string; bio?: string; avatar?: string }) {
   return apiFetch<{ ok: boolean; user: any }>('/api/profile', { method: 'POST', body: JSON.stringify(input) })
 }
 
-// POST /api/dotation — funds a freshly-logged-in embedded wallet with 0.5 USDC.
+// POST /api/dotation — funds a freshly-logged-in embedded wallet with gas money.
 export function dotation(address: string) {
   return apiFetch<{ funded?: boolean; skipped?: boolean; hash?: string; amount?: number; balance?: number }>(
     '/api/dotation',
@@ -78,99 +74,64 @@ export function dotation(address: string) {
   )
 }
 
-// ---- Agents (TZ Part 3) ----
-export interface PublicAgent {
+// ---- Likes (markets) ----
+export function toggleLike(address: string, marketId: number | string) {
+  return apiFetch<{ liked: boolean; count: number }>('/api/like', {
+    method: 'POST',
+    body: JSON.stringify({ address, marketId }),
+  })
+}
+export function getLikes(marketId: number | string, address?: string) {
+  return apiFetch<{ count: number; liked: boolean }>(`/api/likes/${marketId}${address ? `?address=${address}` : ''}`)
+}
+
+// ---- Follows (subscribe to creators; `target` is a name OR an address) ----
+export function toggleFollow(follower: string, target: string) {
+  return apiFetch<{ following: boolean; followers: number }>('/api/follow', {
+    method: 'POST',
+    body: JSON.stringify({ follower, target }),
+  })
+}
+export function getFollows(key: string, address?: string) {
+  return apiFetch<{ followers: number; following: boolean }>(`/api/follows/${key}${address ? `?address=${address}` : ''}`)
+}
+export interface FollowedUser { name: string; address: string; avatar: string; verified: boolean }
+export function getFollowing(address: string) {
+  return apiFetch<{ following: FollowedUser[] }>(`/api/following/${address}`)
+}
+
+// ---- Activity feed (people's trades + oracle resolutions, from the indexer) ----
+export interface ActivityItem {
   id: string
-  name: string
-  ens?: string
-  address: `0x${string}`
-  strategy: string
-  preset: string
-  owner?: string
-  humanId?: string
-  erc8004Id?: string
-  record?: { w: number; l: number }
-  public?: boolean // false = draft, awaiting World ID confirmation to go public
-}
-
-// Pass `owner` to also receive that owner's own drafts (not visible to others).
-export function listAgents(owner?: string) {
-  const q = owner ? `?owner=${owner}` : ''
-  return apiFetch<{ agents: PublicAgent[] }>(`/api/agents${q}`)
-}
-
-export function createAgent(input: { name: string; preset?: string; owner?: string }) {
-  return apiFetch<{ agent: PublicAgent; fundTx?: string }>('/api/agents', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  })
-}
-
-// Publish a draft bot — confirmed with a World ID proof (or dev bypass on the backend).
-export function publishAgent(id: string, body: { owner?: string; rp_id?: string; idkitResponse?: unknown }) {
-  return apiFetch<{ agent: PublicAgent; published?: boolean; alreadyPublic?: boolean }>(`/api/agents/${id}/publish`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
-}
-
-// ---- Reasoning feed (TZ Part 3 wow-feature) ----
-export interface FeedPost {
   ts: number
-  agent: string
-  action: 'bet' | 'skip' | 'request_approval'
+  kind: 'trade' | 'agent' | 'resolution'
+  user?: string
   marketId?: number
   marketQuestion?: string
-  side?: 'YES' | 'NO'
+  outcome?: number // trades: slot 0 = NO, 1 = YES; resolutions: 0 = NO, 1 = YES, 2 = INVALID
   amountUsdc?: number
-  confidence?: number
-  impliedProb?: number
-  estProb?: number
-  edge?: number
-  reasoning: string
-  dataUsed?: { label: string; value: string; source: string }[]
-  humanBacked?: boolean
-  tx?: string
-  status?: string
-}
-
-export function listFeed() {
-  return apiFetch<{ feed: FeedPost[] }>('/api/agent/tick')
-}
-
-export function runAgentTick(agentId?: string) {
-  return apiFetch<FeedPost>('/api/agent/tick', { method: 'POST', body: JSON.stringify({ agentId }) })
-}
-
-// ---- Human-in-the-loop approvals (TZ Part 3) ----
-export interface Approval {
-  id: string
-  agentId: string
-  agent: string
-  owner: string
-  marketId: number
-  marketQuestion: string
-  side: 'YES' | 'NO'
-  amountUsdc: number
-  reasoning: string
-  ts: number
-  status: 'pending' | 'approved' | 'rejected'
   tx?: string
 }
-
-export function listApprovals(owner?: string) {
-  const q = owner ? `?owner=${owner}` : ''
-  return apiFetch<{ approvals: Approval[] }>(`/api/approvals${q}`)
+export function getActivityFeed() {
+  return apiFetch<{ feed: ActivityItem[] }>('/feed')
 }
 
-export function resolveApproval(id: string, action: 'approve' | 'reject', body: Record<string, unknown> = {}) {
-  return apiFetch<{ status: string; tx?: string; txUrl?: string }>(`/api/approvals/${id}`, {
+// ---- Admin (hidden /admin page; shared secret in the x-admin-secret header) ----
+export interface AdminCreator { name: string; address: string; verified: boolean }
+export function adminListCreators(secret: string) {
+  return apiFetch<{ creators: AdminCreator[] }>('/api/admin/creators', {
+    headers: { 'x-admin-secret': secret },
+  })
+}
+export function adminSetCreator(secret: string, address: string, grant: boolean) {
+  return apiFetch<{ ok: boolean; address: string; name: string; creator: boolean }>('/api/admin/creator', {
     method: 'POST',
-    body: JSON.stringify({ action, ...body }),
+    headers: { 'x-admin-secret': secret },
+    body: JSON.stringify({ address, grant }),
   })
 }
 
-// ---- World ID (TZ Part 2) ----
+// ---- World ID ----
 export async function verifyStatus(address: string): Promise<boolean> {
   try {
     const b = await apiFetch<{ verified: boolean }>(`/api/verify-proof?address=${address}`)

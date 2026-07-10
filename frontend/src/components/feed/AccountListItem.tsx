@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
 import type { Account } from '../../types'
 import VerifiedBadge from '../common/VerifiedBadge'
+import FollowButton from '../common/FollowButton'
 
-// Row item used in the "People" tab lists (links to the profile, static follow pill)
+// Row item used in the "People" tab lists (links to the profile, live follow toggle)
 export default function AccountListItem({ account, borderBottom }: { account: Account; borderBottom?: boolean }) {
   return (
     <Link
@@ -27,7 +28,7 @@ export default function AccountListItem({ account, borderBottom }: { account: Ac
         </div>
       </div>
       <div className="ms-auto">
-        <span className="btn btn-outline-primary btn-sm px-3 rounded-pill">+ Follow</span>
+        <FollowButton target={account.name} />
       </div>
     </Link>
   )

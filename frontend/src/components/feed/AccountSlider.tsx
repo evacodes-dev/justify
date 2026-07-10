@@ -37,7 +37,7 @@ export default function AccountSlider({ accounts }: { accounts: Account[] }) {
               </div>
               <p className="fw-bold text-white m-0">{account.name}</p>
               <p className="small text-muted">{account.bio}</p>
-              <FollowButton initialFollowing={account.following} />
+              <FollowButton target={account.name} initialFollowing={account.following} />
             </div>
           </div>
         </div>

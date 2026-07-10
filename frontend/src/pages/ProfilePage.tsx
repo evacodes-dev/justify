@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import RightSidebar from '../components/layout/RightSidebar'
 import ProfileHeader from '../components/profile/ProfileHeader'
+import FollowingList from '../components/profile/FollowingList'
 import ArcPositions from '../components/portfolio/ArcPositions'
 import { useUserProfile } from '../hooks/useUserProfile'
 import { useWallet } from '../hooks/useWallet'
@@ -35,6 +36,7 @@ export default function ProfilePage() {
             </div>
           )}
 
+          {address && <FollowingList address={address} />}
           <ArcPositions />
         </div>
       </main>

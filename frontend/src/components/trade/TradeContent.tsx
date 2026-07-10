@@ -1,10 +1,4 @@
 import type { TradeMarket } from '../../data/trade'
-import type { Account } from '../../types'
-import { useUi } from '../layout/UiContext'
-import AccountListItem from '../feed/AccountListItem'
-import PostCard from '../feed/PostCard'
-import { peopleYouCanFollow, popularPeople, newsChannels, politicians } from '../../data/accounts'
-import { trendingPosts } from '../../data/posts'
 import TradeFeedItem from './TradeFeedItem'
 import type { LiveTrade } from './TradeBox'
 
@@ -234,73 +228,17 @@ button.no {
 }
 `
 
-function PeopleSection({ title, accounts }: { title: string; accounts: Account[] }) {
-  return (
-    <div className="border-bottom py-3 px-lg-3">
-      <h6 className="mb-3 fw-bold text-body">{title}</h6>
-      <div className="bg-glass rounded-4 overflow-hidden shadow-sm">
-        {accounts.map((account, i) => (
-          <AccountListItem key={account.id} account={account} borderBottom={i < accounts.length - 1} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// Main column shared by TradePage and TradeFounderPage. Two extra tab panes
-// ("people" and "trending") exist but have no pills nav, so they stay hidden
-// (`tab-pane fade`).
+// Main column shared by TradePage and LiveTradePage: the trading panel feed item.
 export default function TradeContent({ market, live }: { market: TradeMarket; live?: LiveTrade }) {
-  const { openModal } = useUi()
   return (
     <div className="main-content">
       <style>{tradePageCss}</style>
-      <div className="tab-content" id="pills-tabContent">
-        <div className="tab-pane fade show active" id="pills-feed" role="tabpanel" aria-labelledby="pills-feed-tab"></div>
-        {/* Follow People */}
-        <div>
-          <div className="d-flex align-items-center justify-content-between mb-1 px-lg-3">
-            <h6 className="mb-0 fw-bold text-body">Trading panel</h6>
-            <a href="#" className="text-white text-decoration-none material-icons">east</a>
-          </div>
-          {/* Slider Accounts */}
-          {/* Feeds */}
-          <div className="feeds">
-            {/* Feed Item */}
-            <TradeFeedItem market={market} live={live} />
-            {/* Feed Item */}
-          </div>
+      <div>
+        <div className="d-flex align-items-center justify-content-between mb-1 px-lg-3">
+          <h6 className="mb-0 fw-bold text-body">Trading panel</h6>
         </div>
-        <div className="tab-pane fade" id="pills-people" role="tabpanel" aria-labelledby="pills-people-tab">
-          <PeopleSection title="People you can follow" accounts={peopleYouCanFollow} />
-          <PeopleSection title="Popular" accounts={popularPeople} />
-          <PeopleSection title="News Papers & Channels" accounts={newsChannels} />
-          <PeopleSection title="Politicians" accounts={politicians} />
-        </div>
-        <div className="tab-pane fade" id="pills-trending" role="tabpanel" aria-labelledby="pills-trending-tab">
-          {/* Post Tab */}
-          <div className="px-3">
-            <div
-              className="input-group shadow-sm mb-3 rounded-4 overflow-hidden py-2 bg-glass"
-              onClick={() => openModal('post')}
-            >
-              <span className="input-group-text material-icons border-0 bg-transparent text-primary">account_circle</span>
-              <input type="text" className="form-control border-0 bg-transparent fw-light ps-1" placeholder="What's on your mind." />
-              <a
-                href="#"
-                className="text-decoration-none input-group-text bg-transparent border-0 material-icons text-primary"
-                onClick={(e) => e.preventDefault()}
-              >
-                add_circle
-              </a>
-            </div>
-          </div>
-          {/* Feeds */}
-          <div className="feeds">
-            {trendingPosts.map((post) => (
-              <PostCard key={post.id} post={post} variant="compact" />
-            ))}
-          </div>
+        <div className="feeds">
+          <TradeFeedItem market={market} live={live} />
         </div>
       </div>
     </div>

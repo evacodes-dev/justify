@@ -2,6 +2,7 @@ import Dropdown from 'react-bootstrap/Dropdown'
 import { Link } from 'react-router-dom'
 import type { TradeMarket } from '../../data/trade'
 import CommentItem from '../feed/CommentItem'
+import LikeButton from '../common/LikeButton'
 import MarketChart from './MarketChart'
 import TradeBox, { type LiveTrade } from './TradeBox'
 
@@ -96,10 +97,14 @@ export default function TradeFeedItem({ market, live }: { market: TradeMarket; l
                     ref={importantStyle('margin-bottom', '15px')}
                   >
                     <div>
-                      <a href="#" className="text-muted text-decoration-none d-flex align-items-start fw-light">
-                        <span className="material-icons md-20 me-2">thumb_up_off_alt</span>
-                        <span>{market.likes}</span>
-                      </a>
+                      {live ? (
+                        <LikeButton marketId={live.market.id} initialCount={live.market.likes} />
+                      ) : (
+                        <a href="#" className="text-muted text-decoration-none d-flex align-items-start fw-light">
+                          <span className="material-icons md-20 me-2">favorite_border</span>
+                          <span>{market.likes}</span>
+                        </a>
+                      )}
                     </div>
                     <div>
                       <a href="#" className="text-muted text-decoration-none d-flex align-items-start fw-light">

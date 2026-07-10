@@ -6,15 +6,6 @@ import { useMarkets } from '../../hooks/useMarkets'
 import { useCreators } from '../../hooks/useCreators'
 import type { ReactNode } from 'react'
 
-function SearchBox() {
-  return (
-    <div className="input-group mb-4 shadow-sm rounded-4 overflow-hidden py-2 bg-glass">
-      <span className="input-group-text material-icons border-0 bg-transparent text-primary">search</span>
-      <input type="text" className="form-control border-0 bg-transparent fw-light ps-1" placeholder="Search Justify" />
-    </div>
-  )
-}
-
 function MarketMovers() {
   const { markets } = useMarkets()
   const top = [...markets].sort((a, b) => b.api.volume - a.api.volume).slice(0, 4)
@@ -75,7 +66,7 @@ function WhoToFollow() {
             </div>
           </div>
           <div className="ms-auto ps-2 flex-shrink-0">
-            <FollowButton />
+            <FollowButton target={account.name} />
           </div>
         </div>
       ))}
@@ -87,7 +78,7 @@ interface RightSidebarProps {
   children?: ReactNode
 }
 
-// Right column: search + Market Movers + Who to follow (default), or custom page content
+// Right column: Market Movers + Who to follow (default), or custom page content
 export default function RightSidebar({ children }: RightSidebarProps) {
   const wide = useWideLayout()
   return (
@@ -102,7 +93,6 @@ export default function RightSidebar({ children }: RightSidebarProps) {
         <div className="side-trend lg-none">
           {children ?? (
             <div className="sticky-sidebar2 mb-3">
-              <SearchBox />
               <MarketMovers />
               <WhoToFollow />
             </div>
@@ -113,4 +103,4 @@ export default function RightSidebar({ children }: RightSidebarProps) {
   )
 }
 
-export { SearchBox, MarketMovers, WhoToFollow }
+export { MarketMovers, WhoToFollow }
