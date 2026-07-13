@@ -20,12 +20,12 @@ export default function ShareButton({ url, text }: { url: string; text: string }
 
   return (
     <Dropdown align="end">
+      {/* NB: no custom onClick here — it would override react-bootstrap's own toggle handler */}
       <Dropdown.Toggle
         as="a"
         href="#"
         bsPrefix="no-caret"
         className="text-muted text-decoration-none d-flex align-items-start fw-light"
-        onClick={(e: React.MouseEvent) => e.preventDefault()}
       >
         <span className="material-icons md-18 me-2">share</span>
         <span>Share</span>
