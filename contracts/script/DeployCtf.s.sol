@@ -19,7 +19,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 ///   FPMM_FACTORY       optional — reuse an existing FPMMDeterministicFactory
 ///   FEED_ETH/BTC/LINK  optional — Chainlink aggregators to allowlist
 ///   CRE_FORWARDER      optional
-///   CHALLENGE_WINDOW / DISPUTE_LIVENESS  seconds, default 7200
+///   CHALLENGE_WINDOW / DISPUTE_LIVENESS  seconds, default 48h / 24h (beta posture)
 ///
 /// If CTF_ADDRESS/FPMM_FACTORY are unset, the VENDORED AUDITED bytecode is deployed verbatim
 /// (vendor/out artifacts — build with `cd vendor && forge build` first).
@@ -31,8 +31,8 @@ contract DeployCtf is Script {
         address oov3 = vm.envAddress("OOV3_ADDRESS");
         address ctf = vm.envOr("CTF_ADDRESS", address(0));
         address fpmmFactory = vm.envOr("FPMM_FACTORY", address(0));
-        uint64 window = uint64(vm.envOr("CHALLENGE_WINDOW", uint256(7200)));
-        uint64 liveness = uint64(vm.envOr("DISPUTE_LIVENESS", uint256(7200)));
+        uint64 window = uint64(vm.envOr("CHALLENGE_WINDOW", uint256(172800)));
+        uint64 liveness = uint64(vm.envOr("DISPUTE_LIVENESS", uint256(86400)));
 
         vm.startBroadcast(pk);
 
