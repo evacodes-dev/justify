@@ -17,6 +17,7 @@ import NotificationPage from './pages/NotificationPage'
 import AdminPage from './pages/AdminPage'
 import HelpPage from './pages/HelpPage'
 import NotFoundPage from './pages/NotFoundPage'
+import OwnerMarketPage from './pages/OwnerMarketPage'
 
 // Warm up the chain config so trade paths have the deployed addresses ready.
 void ensureConfig()
@@ -42,6 +43,10 @@ export default function App() {
             <Route path="/help" element={<HelpPage />} />
             {/* hidden — reachable by URL only, no nav entry */}
             <Route path="/admin" element={<AdminPage />} />
+            {/* pretty product URLs: /<founder> and /<founder>/<market>.
+                Static routes above always outrank these dynamic ones. */}
+            <Route path="/:name" element={<UserProfilePage />} />
+            <Route path="/:owner/:market" element={<OwnerMarketPage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
