@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import RightSidebar from '../components/layout/RightSidebar'
 import ArcPositions from '../components/portfolio/ArcPositions'
 
-// Portfolio — the connected wallet's real on-chain positions on Arc (buy/redeem).
+// Portfolio — the connected wallet's real on-chain positions (buy/sell/redeem).
 export default function PortfolioPage() {
   return (
     <>

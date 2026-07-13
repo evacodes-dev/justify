@@ -10,8 +10,8 @@ import { useUsdcBalance } from "../../hooks/useUsdcBalance";
 const shortAddress = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 
 // Logged out: opens Dynamic's auth modal (Google / email / wallet).
-// Logged in: shows the connected address + live USDC balance on Arc; click
-// opens Dynamic's profile modal (account details + log out).
+// Logged in: shows the connected address + live USDC balance on the trading chain;
+// click opens Dynamic's profile modal (account details + log out).
 function SignInButton() {
   const {
     primaryWallet,
@@ -34,7 +34,7 @@ function SignInButton() {
         >
           <span>{shortAddress(primaryWallet.address)}</span>
           <span className="badge text-body fw-normal text-lowercase">
-            {balance == null ? "… USDC" : `$${balance.toFixed(2)} USDC · Arc`}
+            {balance == null ? "… USDC" : `$${balance.toFixed(2)} USDC · Base`}
           </span>
         </button>
         <button
