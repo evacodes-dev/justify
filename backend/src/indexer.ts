@@ -47,7 +47,7 @@ function addPosition(marketId: number, user: string, outcome: number, shares: nu
 }
 
 // Public RPCs cap eth_getLogs ranges (sepolia.base.org: 2000 blocks) — tune per RPC.
-const CHUNK = BigInt(process.env.INDEXER_CHUNK_BLOCKS ?? 5000) - 1n;
+const CHUNK = BigInt(process.env.INDEXER_CHUNK_BLOCKS ?? 2000) - 1n;
 
 async function scan() {
   const latest = await publicClient.getBlockNumber();

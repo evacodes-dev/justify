@@ -37,11 +37,16 @@ export async function createAgentInternal(input: {
 
   const pk = generatePrivateKey();
   const account = privateKeyToAccount(pk);
-  const fundUsdc = Math.min(budgetUsdc, 1) + 0.2;
-  const fundTx = await backendSigner().run(({ wallet, account: from }) =>
-    wallet.sendTransaction({ to: account.address, value: parseEther(String(fundUsdc)), account: from, chain: arc }),
+  // fund the agent wallet: a little native for gas (ETH on Base) + its USDC budget as ERC-20.
+  // (The old Arc-era single native transfer would have sent whole ETH on Base.)
+  const gasTx = await backendSigner().run(({ wallet, account: from }) =>
+    wallet.sendTransaction({ to: account.address, value: parseEther(String(config.gasDripAmount)), account: from, chain: arc }),
   );
-  await publicClient.waitForTransactionReceipt({ hash: fundTx });
+  await publicClient.waitForTransactionReceipt({ hash: gasTx });
+  const fundTx = await backendSigner().run(({ wallet, account: from }) =>
+    wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "transfer", args: [account.address, toUsdc(budgetUsdc)], account: from, chain: arc }),
+  );
+  await publicClient.waitForTransactionReceipt({ hash: fundTx as `0x${string}` });
 
   const strategy = input.strategyText?.trim() || `${preset}: ${PRESETS[preset] ?? PRESETS["Contrarian"]}`;
   const agent = db.agents.put({

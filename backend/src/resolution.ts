@@ -1,6 +1,6 @@
 import { config, MODELS } from "./config.js";
 import { backendSigner, publicClient, arc } from "./chain.js";
-import { resolverAbi, aggregatorDecimalsAbi, settlerAbi } from "./abis.js";
+import { resolverAbi, aggregatorDecimalsAbi, settlerAbi, registryAbi } from "./abis.js";
 import { db } from "./store.js";
 import { getRelevantData } from "./market-intel.js";
 import { claudeJson } from "./llm.js";
@@ -104,6 +104,16 @@ export async function resolveMarket(marketId: number) {
   const m = db.markets.get(marketId);
   if (!m) return { error: "no market" };
   if (m.resolved) return { error: "already resolved" };
+  // the local DB can lag the chain (indexer catch-up) — never retry an on-chain-resolved market
+  if (config.registry) {
+    const onchain = (await publicClient.readContract({
+      address: config.registry, abi: registryAbi, functionName: "isResolved", args: [BigInt(marketId)],
+    })) as boolean;
+    if (onchain) {
+      db.markets.patch(marketId, { resolved: true });
+      return { error: "already resolved on-chain" };
+    }
+  }
 
   let outcome: "YES" | "NO" | "INVALID" | undefined;
   let reasoning = "";
