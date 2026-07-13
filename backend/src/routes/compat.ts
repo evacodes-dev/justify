@@ -305,6 +305,11 @@ export async function compatRoutes(app: FastifyInstance) {
   app.post<{ Body: any }>("/api/create-market", async (req, reply) => {
     const { question, description, category, image, closeTimeDays, closeTimeTs, creator, countries, restricted, priceConfig } = (req.body ?? {}) as any;
     if (!question || String(question).length < 6) return reply.code(400).send({ error: "question too short" });
+    // self-create mode: creation happens from the user's wallet — the backend path is CLOSED
+    // (otherwise a stale cached bundle silently falls back to backend-funded creation)
+    if (config.createMode === "self") {
+      return reply.code(409).send({ error: "self-create mode is on: create the market from your wallet (hard-refresh the page if you don't see the wallet flow)" });
+    }
     // product rule: creators are granted via the admin API only (World ID = just a checkmark)
     if (config.features.creatorViaAdmin) {
       const cu = db.users.find((x) => x.address.toLowerCase() === String(creator ?? "").toLowerCase());
