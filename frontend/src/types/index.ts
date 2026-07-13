@@ -30,6 +30,9 @@ export interface Market {
   yesPrice: number
   noPrice: number
   likes: number
+  resolved?: boolean
+  outcome?: number | null
+  closed?: boolean
 }
 
 export interface PostParagraph {

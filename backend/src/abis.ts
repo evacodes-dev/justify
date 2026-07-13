@@ -49,6 +49,7 @@ export const settlerAbi = parseAbi([
   "function canFinalize(uint256 marketId) view returns (bool)",
   "function settleChallenge(uint256 marketId) external",
   "function proposals(uint256) view returns (uint8 outcome, uint8 counterOutcome, uint8 status, uint64 proposedAt, address proposer, address challenger, bytes32 assertionId, string reason)",
+  "function challengeWindow() view returns (uint64)",
 ]);
 
 export const erc20Abi = parseAbi([

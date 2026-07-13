@@ -45,14 +45,40 @@ export default function MarketCard({ market }: { market: Market }) {
                 <ChanceArc chance={market.chance} />
               </div>
             </div>
-            <div className="market-actions">
-              <button className="btn-yes buy-yes" onClick={() => open('yes')}>
-                Buy {market.yesLabel}
-              </button>
-              <button className="btn-no buy-no" onClick={() => open('no')}>
-                Buy {market.noLabel}
-              </button>
-            </div>
+            {market.resolved ? (
+              <div className="market-actions">
+                <Link
+                  to={tradeHref}
+                  className={`d-flex align-items-center justify-content-center gap-2 w-100 py-2 rounded-3 text-decoration-none fw-bold ${
+                    market.outcome === 1 ? 'text-success' : market.outcome === 0 ? 'text-danger' : 'text-warning'
+                  }`}
+                  style={{ background: 'rgba(255,255,255,0.05)' }}
+                >
+                  <span className="material-icons md-18">verified</span>
+                  Resolved · {market.outcome === 1 ? market.yesLabel.toUpperCase() : market.outcome === 0 ? market.noLabel.toUpperCase() : 'INVALID'}
+                </Link>
+              </div>
+            ) : market.closed ? (
+              <div className="market-actions">
+                <Link
+                  to={tradeHref}
+                  className="d-flex align-items-center justify-content-center gap-2 w-100 py-2 rounded-3 text-decoration-none fw-bold text-warning"
+                  style={{ background: 'rgba(255,255,255,0.05)' }}
+                >
+                  <span className="material-icons md-18">hourglass_top</span>
+                  Resolving — view status
+                </Link>
+              </div>
+            ) : (
+              <div className="market-actions">
+                <button className="btn-yes buy-yes" onClick={() => open('yes')}>
+                  Buy {market.yesLabel}
+                </button>
+                <button className="btn-no buy-no" onClick={() => open('no')}>
+                  Buy {market.noLabel}
+                </button>
+              </div>
+            )}
           </div>
           <div className="market-back">
             {side && (

@@ -56,11 +56,15 @@ export type DemoMarket = {
 // `Market` UI shape, so the original components render it unchanged with real data.
 export function toUiMarket(
   m: DemoMarket,
-  state?: { yesPct: number; total: number; resolved: boolean; likes?: number },
+  state?: { yesPct: number; total: number; resolved: boolean; likes?: number; outcome?: number | null; closeTime?: number },
 ): import('../types').Market {
   const yesPct = state?.yesPct ?? 50
   const total = state?.total ?? 0
+  const closed = !!state?.closeTime && state.closeTime * 1000 < Date.now()
   return {
+    resolved: state?.resolved ?? false,
+    outcome: state?.outcome ?? null,
+    closed,
     id: String(m.id),
     title: m.question,
     description: state?.resolved ? 'Resolved · on-chain' : 'Binary FPMM · on-chain',
@@ -134,6 +138,16 @@ export const FPMM_ABI = [
   { type: 'function', name: 'calcSellAmount', stateMutability: 'view', inputs: [{ type: 'uint256', name: 'returnAmount' }, { type: 'uint256', name: 'outcomeIndex' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'buy', stateMutability: 'nonpayable', inputs: [{ type: 'uint256', name: 'investmentAmount' }, { type: 'uint256', name: 'outcomeIndex' }, { type: 'uint256', name: 'minOutcomeTokensToBuy' }], outputs: [] },
   { type: 'function', name: 'sell', stateMutability: 'nonpayable', inputs: [{ type: 'uint256', name: 'returnAmount' }, { type: 'uint256', name: 'outcomeIndex' }, { type: 'uint256', name: 'maxOutcomeTokensToSell' }], outputs: [] },
+] as const
+
+// OptimisticSettler — public challenge of a live proposal (bond via UMA OOv3 minimum).
+export const SETTLER_ABI = [
+  { type: 'function', name: 'challenge', stateMutability: 'nonpayable', inputs: [{ name: 'marketId', type: 'uint256' }, { name: 'counterOutcome', type: 'uint8' }, { name: 'evidence', type: 'string' }], outputs: [{ name: 'assertionId', type: 'bytes32' }] },
+  { type: 'function', name: 'oov3', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+] as const
+
+export const OOV3_ABI = [
+  { type: 'function', name: 'getMinimumBond', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const
 
 // Gnosis ConditionalTokens (ERC-1155 positions).

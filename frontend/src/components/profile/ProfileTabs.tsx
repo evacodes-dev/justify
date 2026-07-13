@@ -5,6 +5,7 @@ import MarketCard from '../market/MarketCard'
 import EmptyState from '../common/EmptyState'
 import { getPosts, getLikedMarketIds, getMentions, type UserPost, type Mention } from '../../lib/api'
 import { useMarkets } from '../../hooks/useMarkets'
+import { useWallet } from '../../hooks/useWallet'
 import { toUiMarket } from '../../lib/markets'
 import { timeAgo } from '../../lib/time'
 import MentionText from '../common/MentionText'
@@ -19,13 +20,14 @@ export default function ProfileTabs({ name, address }: { name: string; address?:
   const [likedIds, setLikedIds] = useState<number[] | null>(null)
   const [mentions, setMentions] = useState<Mention[] | null>(null)
   const { markets } = useMarkets()
+  const { address: viewer } = useWallet()
 
   useEffect(() => {
     setPosts(null); setLikedIds(null); setMentions(null)
-    getPosts(name).then((b) => setPosts(b.posts)).catch(() => setPosts([]))
+    getPosts(name, 30, viewer ?? undefined).then((b) => setPosts(b.posts)).catch(() => setPosts([]))
     if (address) getLikedMarketIds(address).then((b) => setLikedIds(b.marketIds)).catch(() => setLikedIds([]))
     getMentions(name).then((b) => setMentions(b.mentions)).catch(() => setMentions([]))
-  }, [name, address])
+  }, [name, address, viewer])
 
   const likedRows = markets.filter((m) => (likedIds ?? []).includes(m.demo.id))
   const spinner = <div className="text-center py-4"><div className="spinner-border" role="status" /></div>
@@ -63,7 +65,7 @@ export default function ProfileTabs({ name, address }: { name: string; address?:
         likedIds === null ? spinner : likedRows.length ? (
           <div className="feeds px-lg-3">
             {likedRows.map((m) => (
-              <MarketCard key={m.demo.id} market={toUiMarket(m.demo, { yesPct: Math.round(m.api.priceYes * 100), total: m.api.volume, resolved: m.api.resolved, likes: m.api.likes })} />
+              <MarketCard key={m.demo.id} market={toUiMarket(m.demo, { yesPct: Math.round(m.api.priceYes * 100), total: m.api.volume, resolved: m.api.resolved, likes: m.api.likes, outcome: m.api.outcome, closeTime: m.api.closeTime })} />
             ))}
           </div>
         ) : (

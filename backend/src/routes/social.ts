@@ -18,6 +18,13 @@ export const commentsOf = (marketId: number | string): CommentRow[] =>
   kv.get<CommentsMap>("comments", {})[String(marketId)] ?? [];
 
 type PostRow = { id: string; address: string; text: string; ts: number };
+type PostLikesMap = Record<string, string[]>; // postId -> lowercase addresses
+type PostCommentsMap = Record<string, CommentRow[]>; // postId -> chronological comments
+
+export const postLikesOf = (postId: string): string[] =>
+  kv.get<PostLikesMap>("postLikes", {})[postId] ?? [];
+export const postCommentsOf = (postId: string): CommentRow[] =>
+  kv.get<PostCommentsMap>("postComments", {})[postId] ?? [];
 
 const userByAddr = () => new Map(db.users.all().map((u) => [u.address.toLowerCase(), u]));
 const enrich = (rows: { address: string }[] | PostRow[] | CommentRow[]) => {
@@ -116,7 +123,7 @@ export async function socialRoutes(app: FastifyInstance) {
     return { ok: true, post: enrich([row])[0] };
   });
 
-  app.get<{ Querystring: { author?: string; limit?: string } }>("/api/posts", async (req) => {
+  app.get<{ Querystring: { author?: string; limit?: string; viewer?: string } }>("/api/posts", async (req) => {
     let rows = kv.get<PostRow[]>("posts", []);
     const author = String(req.query.author ?? "").toLowerCase();
     if (author) {
@@ -125,7 +132,52 @@ export async function socialRoutes(app: FastifyInstance) {
       rows = rows.filter((p) => p.address === addr);
     }
     const limit = Math.min(100, Number(req.query.limit) || 30);
-    return { posts: enrich(rows.slice(-limit).reverse()) };
+    const viewer = String(req.query.viewer ?? "").toLowerCase();
+    const posts = enrich(rows.slice(-limit).reverse()).map((p: any) => {
+      const likes = postLikesOf(p.id);
+      return {
+        ...p,
+        likes: likes.length,
+        liked: !!viewer && likes.includes(viewer),
+        comments: postCommentsOf(p.id).length,
+        recentComments: enrich(postCommentsOf(p.id).slice(-2)),
+      };
+    });
+    return { posts };
+  });
+
+  // ── likes + comments on text posts ──
+  app.post<{ Body: any }>("/api/post-like", async (req, reply) => {
+    const { address, postId } = (req.body ?? {}) as { address?: string; postId?: string };
+    if (!isAddr(address)) return reply.code(400).send({ error: "address" });
+    const id = String(postId ?? "");
+    if (!kv.get<PostRow[]>("posts", []).some((p) => p.id === id)) return reply.code(404).send({ error: "post" });
+    const all = kv.get<PostLikesMap>("postLikes", {});
+    const cur = new Set(all[id] ?? []);
+    const a = address!.toLowerCase();
+    const liked = !cur.has(a);
+    liked ? cur.add(a) : cur.delete(a);
+    all[id] = [...cur];
+    kv.set("postLikes", all);
+    return { liked, count: cur.size };
+  });
+
+  app.post<{ Body: any }>("/api/post-comment", async (req, reply) => {
+    const { address, postId, text } = (req.body ?? {}) as { address?: string; postId?: string; text?: string };
+    if (!isAddr(address)) return reply.code(400).send({ error: "address" });
+    const id = String(postId ?? "");
+    if (!kv.get<PostRow[]>("posts", []).some((p) => p.id === id)) return reply.code(404).send({ error: "post" });
+    const t = String(text ?? "").trim();
+    if (t.length < 1 || t.length > 500) return reply.code(400).send({ error: "text must be 1..500 chars" });
+    const all = kv.get<PostCommentsMap>("postComments", {});
+    const row: CommentRow = { id: randomUUID(), address: address!.toLowerCase(), text: t, ts: Date.now() };
+    all[id] = [...(all[id] ?? []), row].slice(-300);
+    kv.set("postComments", all);
+    return { ok: true, count: all[id].length, comment: enrich([row])[0] };
+  });
+
+  app.get<{ Params: { postId: string } }>("/api/post-comments/:postId", async (req) => {
+    return { comments: enrich(postCommentsOf(req.params.postId)) };
   });
 
   // ── profile tabs: liked markets + @mentions ──

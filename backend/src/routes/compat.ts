@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { parseEventLogs } from "viem";
 import { config, toUsdc, txUrl } from "../config.js";
 import { backendSigner, publicClient, arc } from "../chain.js";
-import { erc20Abi, registryAbi } from "../abis.js";
+import { erc20Abi, registryAbi, settlerAbi } from "../abis.js";
 import { isAddr, verifyWorldProof, ensureGas } from "../util.js";
 import { db, kv, type AgentRow, type FeedItem, type Approval } from "../store.js";
 import { signRequest } from "@worldcoin/idkit-core/signing";
@@ -281,6 +281,28 @@ export async function compatRoutes(app: FastifyInstance) {
         priceYes: m.priceYes, volume: m.volume, resolved: m.resolved, outcome: m.outcome ?? null,
         closeTime: m.closeTime, oracle: m.oracle, creator: m.creator, restricted: meta.restricted, countries: meta.countries,
       },
+    };
+  });
+
+  // resolution proposal status (optimistic settler): what the market page shows between
+  // closeTime and finalization — proposed outcome, reasoning, challenge deadline.
+  app.get<{ Params: { id: string } }>("/api/proposal/:id", async (req, reply) => {
+    if (!config.settler) return reply.code(404).send({ error: "settler not configured" });
+    const id = BigInt(Number(req.params.id));
+    const [p, windowSec] = await Promise.all([
+      publicClient.readContract({ address: config.settler, abi: settlerAbi, functionName: "proposals", args: [id] }) as Promise<readonly [number, number, number, bigint, string, string, string, string]>,
+      publicClient.readContract({ address: config.settler, abi: settlerAbi, functionName: "challengeWindow" }) as Promise<bigint>,
+    ]);
+    const status = (["none", "proposed", "challenged", "settled"] as const)[Number(p[2])] ?? "none";
+    return {
+      status,
+      outcome: status === "none" ? null : Number(p[0]),
+      counterOutcome: status === "challenged" || status === "settled" ? Number(p[1]) : null,
+      proposedAt: Number(p[3]) * 1000 || null,
+      windowEndsAt: p[3] > 0n ? Number(p[3] + windowSec) * 1000 : null,
+      challenger: /^0x0+$/.test(p[5]) ? null : p[5],
+      reason: p[7] || null,
+      settler: config.settler,
     };
   });
 

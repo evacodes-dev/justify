@@ -23,6 +23,8 @@ export default function TradeBox({ yesOption, noOption, live }: { yesOption: str
   const { shares } = useCtfShares(live?.market, address)
   const { openTrade } = useUi()
   const resolved = !!live?.market.resolved
+  // trading stops at closeTime even before the outcome finalizes (challenge window)
+  const closed = !!live && !resolved && live.market.closeTime > 0 && live.market.closeTime * 1000 < Date.now()
   const yesPct = live ? Math.round(live.market.priceYes * 100) : 50
   const sideShares = side === 1 ? shares?.yesShares ?? 0 : shares?.noShares ?? 0
   // Selling needs CTF position ids — absent on legacy (pre-CTF) markets.
@@ -41,7 +43,7 @@ export default function TradeBox({ yesOption, noOption, live }: { yesOption: str
     openTrade({ market: live.market, side, mode, yesPct, amount: typed > 0 ? typed : undefined })
   }
 
-  const disabled = (live && resolved) || (mode === 'sell' && !canSell)
+  const disabled = (live && (resolved || closed)) || (mode === 'sell' && !canSell)
 
   return (
     <div className="trade-box">
@@ -94,7 +96,9 @@ export default function TradeBox({ yesOption, noOption, live }: { yesOption: str
       <button className="trade-button" onClick={live && !disabled ? onTrade : undefined} disabled={disabled}>
         {live && resolved
           ? 'Market resolved'
-          : mode === 'sell'
+          : closed
+            ? 'Market closed — resolving'
+            : mode === 'sell'
             ? (canSell ? 'Sell' : 'Sell unavailable')
             : 'Trade'}
       </button>

@@ -10,6 +10,7 @@ import EmptyState from '../components/common/EmptyState'
 import { useUi } from '../components/layout/UiContext'
 import { useMarkets, type MarketRow } from '../hooks/useMarkets'
 import { useCreators } from '../hooks/useCreators'
+import { useWallet } from '../hooks/useWallet'
 import { toUiMarket } from '../lib/markets'
 import { getActivityFeed, getPosts, type ActivityItem, type UserPost } from '../lib/api'
 import type { Account } from '../types'
@@ -23,7 +24,7 @@ const tabs: { id: Tab; label: string }[] = [
 ]
 
 const uiOf = (m: MarketRow) =>
-  toUiMarket(m.demo, { yesPct: Math.round(m.api.priceYes * 100), total: m.api.volume, resolved: m.api.resolved, likes: m.api.likes })
+  toUiMarket(m.demo, { yesPct: Math.round(m.api.priceYes * 100), total: m.api.volume, resolved: m.api.resolved, likes: m.api.likes, outcome: m.api.outcome, closeTime: m.api.closeTime })
 
 function MarketGrid({ rows, sort, empty }: { rows: MarketRow[]; sort?: boolean; empty?: { title: string; hint?: string } }) {
   // Trending = client-side sort by volume, likes as the tie-breaker.
@@ -101,14 +102,15 @@ export default function FeedPage() {
   const { markets, loading } = useMarkets()
   const creators = useCreators()
   const [posts, setPosts] = useState<UserPost[]>([])
+  const { address: viewer } = useWallet()
 
   useEffect(() => {
-    const load = () => getPosts(undefined, 30).then((b) => setPosts(b.posts)).catch(() => {})
+    const load = () => getPosts(undefined, 30, viewer ?? undefined).then((b) => setPosts(b.posts)).catch(() => {})
     load()
     window.addEventListener('posts:changed', load)
     const t = setInterval(load, 20_000)
     return () => { window.removeEventListener('posts:changed', load); clearInterval(t) }
-  }, [])
+  }, [viewer])
 
   // merged social feed: text posts + markets-as-posts, newest first
   const entries: FeedEntry[] = [

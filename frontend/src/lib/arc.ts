@@ -1,5 +1,5 @@
 import { createPublicClient, defineChain, http, parseEventLogs, type Chain, type PublicClient } from 'viem'
-import { CHAIN, ensureConfig, USDC_ABI, FPMM_ABI, CTF_ABI, REGISTRY_ABI, type ApiMarket } from './markets'
+import { CHAIN, ensureConfig, USDC_ABI, FPMM_ABI, CTF_ABI, REGISTRY_ABI, SETTLER_ABI, OOV3_ABI, type ApiMarket } from './markets'
 
 // On-chain reads/writes over the audited Gnosis CTF/FPMM stack on Base.
 // Money sits in ConditionalTokens (ERC-1155); trading happens on the market's FPMM.
@@ -157,6 +157,49 @@ export async function redeemPositions(walletClient: any, conditionId: `0x${strin
   })
   await pub.waitForTransactionReceipt({ hash: hash as `0x${string}` })
   return hash
+}
+
+// Challenge a live optimistic proposal: the counter-claim escalates to UMA OOv3.
+// The settler pulls the UMA minimum bond from the challenger (0 on testnet; if
+// non-zero, we approve it on the settler first). Returns the tx + the bond paid.
+export async function challengeProposal(
+  walletClient: any,
+  marketId: number,
+  counterOutcome: 0 | 1 | 2,
+  evidence: string,
+): Promise<{ txHash: string; bond: number }> {
+  const { pub, chain } = await client()
+  const cfg = await ensureConfig()
+  if (!cfg.settler) throw new Error('settler address missing from /api/config')
+  const account = walletClient.account
+
+  const oov3 = (await pub.readContract({
+    address: cfg.settler, abi: SETTLER_ABI, functionName: 'oov3',
+  })) as `0x${string}`
+  const bond = (await pub.readContract({
+    address: oov3, abi: OOV3_ABI, functionName: 'getMinimumBond', args: [CHAIN.usdc],
+  })) as bigint
+
+  if (bond > 0n) {
+    const allowance = (await pub.readContract({
+      address: CHAIN.usdc, abi: USDC_ABI, functionName: 'allowance', args: [account.address, cfg.settler],
+    })) as bigint
+    if (allowance < bond) {
+      const ah = await walletClient.writeContract({
+        address: CHAIN.usdc, abi: USDC_ABI, functionName: 'approve', args: [cfg.settler, bond],
+        chain, account,
+      })
+      await pub.waitForTransactionReceipt({ hash: ah as `0x${string}` })
+    }
+  }
+
+  const txHash = await walletClient.writeContract({
+    address: cfg.settler, abi: SETTLER_ABI, functionName: 'challenge',
+    args: [BigInt(marketId), counterOutcome, evidence],
+    chain, account,
+  })
+  await pub.waitForTransactionReceipt({ hash: txHash as `0x${string}` })
+  return { txHash, bond: fromUsdc(bond) }
 }
 
 // USDC is a plain ERC-20 on Base (not the native token like on Arc).

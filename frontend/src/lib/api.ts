@@ -41,17 +41,30 @@ export function createMarket(input: {
 }
 
 export interface MarketComment { id: string; address: string; name: string; avatar: string; verified: boolean; text: string; ts: number }
-export interface UserPost { id: string; address: string; name: string; avatar: string; verified: boolean; text: string; ts: number }
+export interface UserPost {
+  id: string; address: string; name: string; avatar: string; verified: boolean; text: string; ts: number
+  likes?: number; liked?: boolean; comments?: number; recentComments?: MarketComment[]
+}
 export interface Mention extends UserPost { kind: 'post' | 'comment'; marketId?: number }
 
 export function createPost(input: { address: string; text: string }) {
   return apiFetch<{ ok: boolean; post: UserPost }>('/api/post', { method: 'POST', body: JSON.stringify(input) })
 }
-export function getPosts(author?: string, limit = 30) {
+export function getPosts(author?: string, limit = 30, viewer?: string) {
   const q = new URLSearchParams()
   if (author) q.set('author', author)
   q.set('limit', String(limit))
+  if (viewer) q.set('viewer', viewer)
   return apiFetch<{ posts: UserPost[] }>(`/api/posts?${q}`)
+}
+export function togglePostLike(address: string, postId: string) {
+  return apiFetch<{ liked: boolean; count: number }>('/api/post-like', { method: 'POST', body: JSON.stringify({ address, postId }) })
+}
+export function getPostComments(postId: string) {
+  return apiFetch<{ comments: MarketComment[] }>(`/api/post-comments/${postId}`)
+}
+export function postPostComment(input: { address: string; postId: string; text: string }) {
+  return apiFetch<{ ok: boolean; count: number; comment: MarketComment }>('/api/post-comment', { method: 'POST', body: JSON.stringify(input) })
 }
 export function getLikedMarketIds(address: string) {
   return apiFetch<{ marketIds: number[] }>(`/api/liked/${address}`)
@@ -185,6 +198,25 @@ export interface Resolution {
   model?: string
   oracle?: 'chainlink' | 'claude'
   at?: string
+}
+
+// GET /api/proposal/[id] — optimistic-settler proposal state for the challenge window.
+export interface ProposalState {
+  status: 'none' | 'proposed' | 'challenged' | 'settled'
+  outcome: number | null // 0 = NO, 1 = YES, 2 = INVALID
+  counterOutcome: number | null
+  proposedAt: number | null // ms
+  windowEndsAt: number | null // ms
+  challenger: string | null
+  reason: string | null
+  settler: string
+}
+export async function getProposal(id: number | string): Promise<ProposalState | null> {
+  try {
+    return await apiFetch<ProposalState>(`/api/proposal/${id}`)
+  } catch {
+    return null
+  }
 }
 
 // GET /api/resolution/[id] — stored LLM/CRE resolution (verdict + rationale + tx).
