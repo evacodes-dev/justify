@@ -109,14 +109,14 @@ export default function TradeModal() {
           className={`btn flex-grow-1 rounded-4 fw-bold ${side === 1 ? 'btn-success' : 'btn-outline-secondary text-body'}`}
           onClick={() => setSide(1)}
         >
-          YES · {yesPct}¢
+          YES · ${(yesPct / 100).toFixed(2)}
         </button>
         <button
           type="button"
           className={`btn flex-grow-1 rounded-4 fw-bold ${side === 0 ? 'btn-danger' : 'btn-outline-secondary text-body'}`}
           onClick={() => setSide(0)}
         >
-          NO · {100 - yesPct}¢
+          NO · ${((100 - yesPct) / 100).toFixed(2)}
         </button>
       </div>
 
@@ -145,7 +145,7 @@ export default function TradeModal() {
         </div>
         <div className="d-flex justify-content-between mb-1">
           <span className="text-muted">Avg price</span>
-          <span className="text-body">{avgPrice > 0 ? `${Math.round(avgPrice * 100)}¢` : '—'}</span>
+          <span className="text-body">{avgPrice > 0 ? `$${avgPrice.toFixed(2)}` : '—'}</span>
         </div>
         {mode === 'buy' ? (
           <>
@@ -156,6 +156,10 @@ export default function TradeModal() {
             <div className="d-flex justify-content-between">
               <span className="text-muted">To win (if correct)</span>
               <span className="text-success fw-bold">${estShares > 0 ? estShares.toFixed(2) : '0.00'}</span>
+            </div>
+            <div className="text-muted mt-2 pt-2 border-top border-secondary border-opacity-25" style={{ fontSize: 12 }}>
+              The price is the market's probability: ${(yesPct / 100).toFixed(2)} ≈ {yesPct}% chance.
+              Every share pays $1 if you're right.
             </div>
           </>
         ) : (
