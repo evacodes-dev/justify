@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { UserPost } from '../../lib/api'
 import { timeAgo } from '../../lib/time'
+import MentionText from '../common/MentionText'
 
 // A text post ("vogel") card in the feed / profile Vogel tab.
 export default function UserPostCard({ post }: { post: UserPost }) {
@@ -22,7 +23,7 @@ export default function UserPostCard({ post }: { post: UserPost }) {
           </div>
           <small className="text-muted">{timeAgo(post.ts)}</small>
         </div>
-        <p className="text-body mb-0" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{post.text}</p>
+        <p className="text-body mb-0" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}><MentionText text={post.text} /></p>
       </div>
     </div>
   )

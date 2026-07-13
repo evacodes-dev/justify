@@ -7,6 +7,7 @@ import { getPosts, getLikedMarketIds, getMentions, type UserPost, type Mention }
 import { useMarkets } from '../../hooks/useMarkets'
 import { toUiMarket } from '../../lib/markets'
 import { timeAgo } from '../../lib/time'
+import MentionText from '../common/MentionText'
 
 type Tab = 'vogel' | 'liked' | 'mentions'
 
@@ -85,7 +86,7 @@ export default function ProfileTabs({ name, address }: { name: string; address?:
                   </span>
                   <span className="text-muted small ms-auto">{timeAgo(m.ts)}</span>
                 </div>
-                <p className="text-body small mb-0" style={{ wordBreak: 'break-word' }}>{m.text}</p>
+                <p className="text-body small mb-0" style={{ wordBreak: 'break-word' }}><MentionText text={m.text} /></p>
               </div>
             ))}
           </div>
