@@ -277,7 +277,7 @@ export default function CreatePage() {
                       </div>
                       <p className={`small mb-3 ${liquidityValid ? 'text-muted' : 'text-warning'}`}>
                         {liquidityValid
-                          ? 'You fund the starting pool and receive the LP tokens + 2% pool fees. Bigger pool = steadier prices.'
+                          ? 'Liquidity is not a bet — it backs both sides, earns 2% of volume, and you get it back (±) after resolution. Bigger pool = steadier prices.'
                           : 'Minimum 0.5 USDC.'}
                       </p>
                     </>

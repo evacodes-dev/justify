@@ -40,6 +40,14 @@ export function createMarket(input: {
   )
 }
 
+export interface MarketComment { id: string; address: string; name: string; avatar: string; verified: boolean; text: string; ts: number }
+export function getComments(marketId: number | string) {
+  return apiFetch<{ comments: MarketComment[] }>(`/api/comments/${marketId}`)
+}
+export function postComment(input: { address: string; marketId: number | string; text: string }) {
+  return apiFetch<{ ok: boolean; count: number }>('/api/comment', { method: 'POST', body: JSON.stringify(input) })
+}
+
 export interface ChainlinkPrice { asset: string; price: number; feed: string; updatedAt: number; network: string; explorer: string }
 export function getChainlinkPrice(asset: string) {
   return apiFetch<ChainlinkPrice>(`/api/chainlink/${asset}`)

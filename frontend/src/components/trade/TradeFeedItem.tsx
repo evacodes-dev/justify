@@ -1,8 +1,14 @@
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react'
 import Dropdown from 'react-bootstrap/Dropdown'
 import { Link } from 'react-router-dom'
 import type { TradeMarket } from '../../data/trade'
+import type { Comment } from '../../types'
+import { getComments, postComment, type MarketComment } from '../../lib/api'
+import { useWallet } from '../../hooks/useWallet'
+import { useToast } from '../common/Toast'
 import CommentItem from '../feed/CommentItem'
 import LikeButton from '../common/LikeButton'
+import ShareButton from '../common/ShareButton'
 import MarketChart from './MarketChart'
 import TradeBox, { type LiveTrade } from './TradeBox'
 
@@ -13,6 +19,18 @@ function importantStyle(prop: string, value: string) {
     el?.style.setProperty(prop, value, 'important')
   }
 }
+
+const timeAgo = (ts: number): string => {
+  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000))
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m`
+  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  return `${Math.floor(s / 86400)}d`
+}
+
+const toUiComment = (c: MarketComment): Comment => ({
+  id: c.id, author: c.name, avatar: c.avatar, text: c.text, time: timeAgo(c.ts),
+})
 
 function TradeFeedMenu() {
   return (
@@ -26,27 +44,59 @@ function TradeFeedMenu() {
         more_vert
       </Dropdown.Toggle>
       <Dropdown.Menu className="fs-13 dropdown-menu-end bg-light-glass">
-        <Dropdown.Item className="text-dark" href="#">
-          <span className="material-icons md-13 me-1">edit</span>Edit
-        </Dropdown.Item>
-        <Dropdown.Item className="text-dark" href="#">
-          <span className="material-icons md-13 me-1">delete</span>Delete
-        </Dropdown.Item>
-        <Dropdown.Item className="text-dark" href="#">
-          <span className="material-icons md-13 me-1 ltsp-n5">arrow_back_ios arrow_forward_ios</span>Embed Vogel
-        </Dropdown.Item>
         <Dropdown.Item className="text-dark d-flex align-items-center" href="#">
-          <span className="material-icons md-13 me-1">share</span>Share via another apps
+          <span className="material-icons md-13 me-1">flag</span>Report
         </Dropdown.Item>
       </Dropdown.Menu>
     </Dropdown>
   )
 }
 
-// The trading-panel feed item shared by /trade and /trade-founder:
-// author header, market title, price chart, buy/sell box, action counters and comments.
+// The trading-panel feed item: author header, market title, price chart, buy/sell box,
+// action counters, share menu and (for live markets) real comments.
 export default function TradeFeedItem({ market, live }: { market: TradeMarket; live?: LiveTrade }) {
   const { author } = market
+  const { address, isLoggedIn, promptLogin } = useWallet()
+  const toast = useToast()
+  const [comments, setComments] = useState<MarketComment[]>([])
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const loadComments = useCallback(() => {
+    if (!live) return
+    getComments(live.market.id).then((b) => setComments(b.comments)).catch(() => {})
+  }, [live?.market.id]) // eslint-disable-line react-hooks/exhaustive-deps -- id is the identity
+
+  useEffect(() => { loadComments() }, [loadComments])
+
+  const send = async () => {
+    if (!live || sending) return
+    const text = draft.trim()
+    if (!text) return
+    if (!isLoggedIn || !address) { promptLogin(); return }
+    setSending(true)
+    try {
+      await postComment({ address, marketId: live.market.id, text })
+      setDraft('')
+      loadComments()
+    } catch (e) {
+      toast.show((e as Error).message || 'Could not post the comment', { kind: 'error' })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); void send() }
+  }
+
+  // pretty share URL when we know the creator, canonical market URL otherwise
+  const shareUrl = live
+    ? (live.market.creatorName ? `/${live.market.creatorName}/${live.market.id}` : `/trade/m/${live.market.id}`)
+    : window.location.pathname
+  const shareText = live ? live.market.question : market.title
+
+  const uiComments: Comment[] = live ? comments.map(toUiComment) : market.comments
 
   return (
     <div className="border-bottom py-3 px-lg-3">
@@ -72,12 +122,6 @@ export default function TradeFeedItem({ market, live }: { market: TradeMarket; l
                 </div>
               </div>
               <div className="my-2">
-                <p className="text-white market-header"></p>
-                <ul className="list-unstyled mb-3">
-                  <li></li>
-                  <li></li>
-                </ul>
-                <p></p>
                 {/* Justify Market Card Component */}
                 <div className="market-container">
                   <div className="market-container">
@@ -107,22 +151,13 @@ export default function TradeFeedItem({ market, live }: { market: TradeMarket; l
                       )}
                     </div>
                     <div>
-                      <a href="#" className="text-muted text-decoration-none d-flex align-items-start fw-light">
+                      <span className="text-muted d-flex align-items-start fw-light">
                         <span className="material-icons md-20 me-2">chat_bubble_outline</span>
-                        <span>{market.commentsCount}</span>
-                      </a>
+                        <span>{live ? comments.length : market.commentsCount}</span>
+                      </span>
                     </div>
                     <div>
-                      <a href="#" className="text-muted text-decoration-none d-flex align-items-start fw-light">
-                        <span className="material-icons md-20 me-2">repeat</span>
-                        <span>{market.reposts}</span>
-                      </a>
-                    </div>
-                    <div>
-                      <a href="#" className="text-muted text-decoration-none d-flex align-items-start fw-light">
-                        <span className="material-icons md-18 me-2">share</span>
-                        <span>Share</span>
-                      </a>
+                      <ShareButton url={shareUrl} text={shareText} />
                     </div>
                   </div>
                   <div className="d-flex align-items-center mb-3">
@@ -130,11 +165,26 @@ export default function TradeFeedItem({ market, live }: { market: TradeMarket; l
                     <input
                       type="text"
                       className="form-control form-control-sm rounded-3 fw-light bg-glass form-control-text"
-                      placeholder="Write Your comment"
+                      placeholder={isLoggedIn ? 'Write your comment' : 'Sign in to comment'}
+                      value={draft}
+                      maxLength={500}
+                      disabled={!live || sending}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={onKey}
+                      onFocus={() => { if (!isLoggedIn) promptLogin() }}
                     />
+                    <button
+                      type="button"
+                      className="btn btn-link text-primary p-0 ms-2 material-icons"
+                      disabled={!live || sending || !draft.trim()}
+                      onClick={() => void send()}
+                      aria-label="Send comment"
+                    >
+                      send
+                    </button>
                   </div>
                   <div className="comments">
-                    {market.comments.map((comment) => (
+                    {uiComments.map((comment) => (
                       <CommentItem key={comment.id} comment={comment} />
                     ))}
                   </div>

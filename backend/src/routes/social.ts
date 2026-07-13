@@ -1,16 +1,21 @@
 import type { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { db, kv } from "../store.js";
 
-// Product social layer: likes on markets + follower graph for creators, with an
+// Product social layer: likes + comments on markets + follower graph for creators, with an
 // unfollow confirmation handled client-side. kv-backed (durable once Postgres is on).
 
 type LikesMap = Record<string, string[]>; // marketId -> lowercase addresses
 type FollowsMap = Record<string, string[]>; // target address (lower) -> follower addresses
+type CommentRow = { id: string; address: string; text: string; ts: number };
+type CommentsMap = Record<string, CommentRow[]>; // marketId -> chronological comments
 
 export const likesOf = (marketId: number | string): string[] =>
   kv.get<LikesMap>("likes", {})[String(marketId)] ?? [];
 export const followersOf = (addressLower: string): string[] =>
   kv.get<FollowsMap>("follows", {})[addressLower] ?? [];
+export const commentsOf = (marketId: number | string): CommentRow[] =>
+  kv.get<CommentsMap>("comments", {})[String(marketId)] ?? [];
 
 const isAddr = (a?: string) => /^0x[a-fA-F0-9]{40}$/.test(a ?? "");
 
@@ -46,6 +51,38 @@ export async function socialRoutes(app: FastifyInstance) {
       return { count: list.length, liked: !!a && list.includes(a) };
     },
   );
+
+  // ── comments on markets ──
+  app.post<{ Body: any }>("/api/comment", async (req, reply) => {
+    const { address, marketId, text } = (req.body ?? {}) as { address?: string; marketId?: number | string; text?: string };
+    if (!isAddr(address)) return reply.code(400).send({ error: "address" });
+    if (marketId == null || !db.markets.get(Number(marketId))) return reply.code(404).send({ error: "market" });
+    const t = String(text ?? "").trim();
+    if (t.length < 1 || t.length > 500) return reply.code(400).send({ error: "text must be 1..500 chars" });
+    const all = kv.get<CommentsMap>("comments", {});
+    const key = String(marketId);
+    const list = all[key] ?? [];
+    const row: CommentRow = { id: randomUUID(), address: address!.toLowerCase(), text: t, ts: Date.now() };
+    all[key] = [...list, row].slice(-300); // cap per market
+    kv.set("comments", all);
+    return { ok: true, count: all[key].length, comment: row };
+  });
+
+  app.get<{ Params: { marketId: string } }>("/api/comments/:marketId", async (req) => {
+    const rows = commentsOf(req.params.marketId);
+    const users = db.users.all();
+    const byAddr = new Map(users.map((u) => [u.address.toLowerCase(), u]));
+    return {
+      comments: rows.map((c) => {
+        const u = byAddr.get(c.address);
+        return {
+          id: c.id, address: c.address, text: c.text, ts: c.ts,
+          name: u?.name ?? `${c.address.slice(0, 6)}…${c.address.slice(-4)}`,
+          avatar: u?.avatar || "/img/images.jpeg", verified: !!u?.verified,
+        };
+      }),
+    };
+  });
 
   // ── follows (subscribe to creators) ──
   app.post<{ Body: any }>("/api/follow", async (req, reply) => {
