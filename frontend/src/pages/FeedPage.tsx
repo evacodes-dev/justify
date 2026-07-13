@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import RightSidebar from '../components/layout/RightSidebar'
 import AccountSlider from '../components/feed/AccountSlider'
 import AccountListItem from '../components/feed/AccountListItem'
@@ -62,7 +62,7 @@ function ActivitySection({ accounts }: { accounts: Account[] }) {
     let alive = true
     const load = () =>
       getActivityFeed()
-        .then((b) => { if (alive) setItems((b.feed ?? []).filter((f) => f.kind !== 'agent').slice(0, 8)) })
+        .then((b) => { if (alive) setItems((b.feed ?? []).filter((f) => f.kind !== 'agent').slice(0, 5)) })
         .catch(() => {})
     load()
     const t = setInterval(load, 15_000)
@@ -118,6 +118,22 @@ export default function FeedPage() {
     ...markets.map((row): FeedEntry => ({ ts: row.api.createdAt ?? 0, kind: 'market', row })),
   ].sort((a, b) => b.ts - a.ts)
 
+  // lazy pagination: render a window and grow it as the sentinel scrolls into view
+  const PAGE = 8
+  const [visible, setVisible] = useState(PAGE)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const hasMore = visible < entries.length
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !hasMore) return
+    const obs = new IntersectionObserver(
+      (es) => { if (es[0].isIntersecting) setVisible((v) => v + PAGE) },
+      { rootMargin: '600px' },
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [hasMore, activeTab])
+
   return (
     <>
       <main className="col col-xl-6 order-xl-2 col-lg-12 order-lg-1 col-md-12 col-sm-12 col-12 border-start border-end">
@@ -153,11 +169,18 @@ export default function FeedPage() {
                 {loading && !entries.length ? (
                   <div className="text-center py-5"><div className="spinner-border" role="status" /></div>
                 ) : entries.length ? (
-                  entries.map((e) =>
-                    e.kind === 'post'
-                      ? <UserPostCard key={`p-${e.post.id}`} post={e.post} />
-                      : <MarketFeedItem key={`m-${e.row.demo.id}`} ui={uiOf(e.row)} api={e.row.api} accounts={creators} />,
-                  )
+                  <>
+                    {entries.slice(0, visible).map((e) =>
+                      e.kind === 'post'
+                        ? <UserPostCard key={`p-${e.post.id}`} post={e.post} />
+                        : <MarketFeedItem key={`m-${e.row.demo.id}`} ui={uiOf(e.row)} api={e.row.api} accounts={creators} />,
+                    )}
+                    {hasMore && (
+                      <div ref={sentinelRef} className="text-center py-3">
+                        <div className="spinner-border spinner-border-sm text-muted" role="status" />
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <EmptyState icon="dynamic_feed" title="Nothing here yet" hint="Markets and posts from creators will show up here." />
                 )}

@@ -5,6 +5,10 @@ import type { Account } from '../../types'
 
 const sideOf = (outcome?: number) => (outcome === 1 ? 'YES' : outcome === 0 ? 'NO' : 'INVALID')
 
+// raw 0x… users (no profile name yet) render as a short 0x1234…5678 handle
+const displayName = (user?: string) =>
+  user && /^0x[a-fA-F0-9]{40}$/.test(user) ? `${user.slice(0, 6)}…${user.slice(-4)}` : user
+
 function timeAgo(ts: number) {
   const s = Math.max(1, Math.round((Date.now() - ts) / 1000))
   if (s < 60) return `${s}s`
@@ -32,7 +36,7 @@ export default function EventCard({ item, accounts }: { item: ActivityItem; acco
           <p className="mb-0 text-body d-flex align-items-center flex-wrap">
             {isTrade ? (
               <>
-                <Link to={`/u/${item.user}`} className="fw-bold text-decoration-none text-body">{item.user}</Link>
+                <Link to={`/u/${item.user}`} className="fw-bold text-decoration-none text-body text-truncate" style={{ maxWidth: 180 }}>{displayName(item.user)}</Link>
                 {known?.verified && <VerifiedBadge />}
                 <span className="text-muted ms-1">
                   bought {sideOf(item.outcome)}{item.amountUsdc != null ? ` for $${item.amountUsdc.toFixed(2)}` : ''}
