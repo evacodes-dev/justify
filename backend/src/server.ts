@@ -32,7 +32,7 @@ if (!config.registry) {
 
 // ─────────── health / config ───────────
 app.get("/health", async () => ({ ok: true, chainId: config.chainId, registry: config.registry }));
-app.get("/config", async () => ({
+const configPayload = async () => ({
   chainId: config.chainId,
   rpc: config.arcRpc,
   explorer: config.explorer,
@@ -43,7 +43,9 @@ app.get("/config", async () => ({
   usdc: config.usdc,
   usdcDecimals: config.usdcDecimals,
   approvalThresholdUsdc: config.approvalThresholdUsdc,
-}));
+});
+app.get("/config", configPayload);
+app.get("/api/config", configPayload); // /api/* alias — prod nginx only proxies /api
 
 // ─────────── read: markets ───────────
 app.get("/markets", async () => ({ markets: db.markets.all().sort((a, b) => b.createdAt - a.createdAt) }));
@@ -55,7 +57,9 @@ app.get<{ Params: { id: string } }>("/markets/:id", async (req, reply) => {
 });
 
 // ─────────── read: feed ───────────
-app.get("/feed", async () => ({ feed: db.feed.all().sort((a, b) => b.ts - a.ts).slice(0, 100) }));
+const feedPayload = async () => ({ feed: db.feed.all().sort((a, b) => b.ts - a.ts).slice(0, 100) });
+app.get("/feed", feedPayload);
+app.get("/api/feed", feedPayload); // /api/* alias — prod nginx only proxies /api
 
 // ─────────── read: leaderboard ───────────
 app.get("/leaderboard", async () => {

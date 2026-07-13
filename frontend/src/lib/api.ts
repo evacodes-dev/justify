@@ -113,7 +113,7 @@ export interface ActivityItem {
   tx?: string
 }
 export function getActivityFeed() {
-  return apiFetch<{ feed: ActivityItem[] }>('/feed')
+  return apiFetch<{ feed: ActivityItem[] }>('/api/feed')
 }
 
 // ---- Admin (hidden /admin page; shared secret in the x-admin-secret header) ----

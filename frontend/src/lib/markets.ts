@@ -29,7 +29,7 @@ let configPromise: Promise<ChainConfig> | null = null
 export function ensureConfig(): Promise<ChainConfig> {
   if (!configPromise) {
     const base = import.meta.env.VITE_API_BASE ?? ''
-    configPromise = fetch(`${base}/config`)
+    configPromise = fetch(`${base}/api/config`)
       .then((r) => r.json())
       .then((c) => Object.assign(CHAIN, c))
       .catch(() => CHAIN) // backend down — keep deployment defaults
