@@ -3,7 +3,8 @@ import RightSidebar from '../components/layout/RightSidebar'
 import MarketCard from '../components/market/MarketCard'
 import { useWallet } from '../hooks/useWallet'
 import { createMarket, getMe, type PriceConfig } from '../lib/api'
-import { apiMarketToDemo, toUiMarket, type ApiMarket } from '../lib/markets'
+import { apiMarketToDemo, ensureConfig, toUiMarket, type ApiMarket } from '../lib/markets'
+import { createMarketSelf } from '../lib/arc'
 
 const CATEGORIES = ['crypto', 'macro', 'politics', 'sports', 'general']
 const ASSETS = ['ETH', 'BTC', 'LINK'] as const
@@ -34,9 +35,17 @@ function parseThreshold(raw: string): number {
 // Two modes: PRICE (structured -> deterministic Chainlink resolution, instant at close)
 // and CUSTOM (free question + required resolution criteria -> AI + challenge window).
 export default function CreatePage() {
-  const { address, isLoggedIn, promptLogin } = useWallet()
+  const { address, isLoggedIn, promptLogin, getChainWalletClient } = useWallet()
   const [creator, setCreator] = useState<boolean | null>(null) // null = still loading
   const [myName, setMyName] = useState('')
+  // 'self' = the creator signs createMarket from their wallet and funds the liquidity;
+  // 'backend' = the backend deploys & funds. Switched server-side via CREATE_MODE env.
+  const [createMode, setCreateMode] = useState<'self' | 'backend'>('backend')
+  const [liquidity, setLiquidity] = useState('1')
+
+  useEffect(() => {
+    ensureConfig().then((c) => setCreateMode(c.createMode === 'self' ? 'self' : 'backend')).catch(() => {})
+  }, [])
 
   const [mode, setMode] = useState<Mode>('price')
   const [category, setCategory] = useState('crypto')
@@ -81,8 +90,10 @@ export default function CreatePage() {
   }, [asset, comparator, parsedThreshold, closeCanonical])
 
   const finalQuestion = mode === 'price' ? priceQuestion : question.trim()
+  const liquidityNum = Number(liquidity)
+  const liquidityValid = createMode !== 'self' || liquidityNum >= 0.5
   const canSubmit =
-    closeValid &&
+    closeValid && liquidityValid &&
     (mode === 'price' ? parsedThreshold > 0 : finalQuestion.length >= 6 && criteria.trim().length >= 20)
 
   // live preview card (fabricated ApiMarket run through the real card pipeline)
@@ -106,19 +117,30 @@ export default function CreatePage() {
     try {
       const priceConfig: PriceConfig | undefined =
         mode === 'price' ? { asset, comparator, threshold: parsedThreshold } : undefined
-      const r = await createMarket({
-        question: finalQuestion,
-        description: mode === 'custom' ? criteria.trim() : `Resolves automatically from the Chainlink ${asset}/USD feed at close time.`,
-        category,
-        closeTimeTs: Math.floor(closeDate!.getTime() / 1000),
-        priceConfig,
-        creator: address,
-      })
-      setResult({ id: r.id, address: r.address, explorer: r.explorer })
+      const description = mode === 'custom' ? criteria.trim() : `Resolves automatically from the Chainlink ${asset}/USD feed at close time.`
+      const closeTimeSec = Math.floor(closeDate!.getTime() / 1000)
+
+      if (createMode === 'self') {
+        // creator signs + funds from their own wallet (metadata shape mirrors the backend's)
+        const metadataURI = JSON.stringify({
+          category, description, criteria: description, image: '',
+          price: priceConfig ?? null, countries: [], restricted: false,
+        })
+        const wc = await getChainWalletClient()
+        const r = await createMarketSelf(wc, { question: finalQuestion, metadataURI, closeTimeSec, liquidityHuman: liquidityNum })
+        const cfg = await ensureConfig()
+        setResult({ id: r.id, address: r.fpmm, explorer: cfg.explorer })
+      } else {
+        const r = await createMarket({
+          question: finalQuestion, description, category,
+          closeTimeTs: closeTimeSec, priceConfig, creator: address,
+        })
+        setResult({ id: r.id, address: r.address, explorer: r.explorer })
+      }
       setPhase('done')
       setQuestion(''); setCriteria(''); setThreshold('')
     } catch (e: any) {
-      setErr(e?.message || String(e)); setPhase('error')
+      setErr(e?.shortMessage || e?.message || String(e)); setPhase('error')
     }
   }
 
@@ -245,6 +267,21 @@ export default function CreatePage() {
                   <p className={`small mb-3 ${closeValid ? 'text-muted' : 'text-warning'}`}>
                     {closeValid ? `Closes ${closeHuman} (your local time)` : 'Close time must be at least 30 minutes from now.'}
                   </p>
+
+                  {createMode === 'self' && (
+                    <>
+                      <div className="form-floating mb-1">
+                        <input type="text" inputMode="decimal" className="form-control rounded-4 bg-glass" id="ml"
+                          value={liquidity} onChange={(e) => setLiquidity(e.target.value)} placeholder="1" />
+                        <label htmlFor="ml" className="text-muted">INITIAL LIQUIDITY (USDC, from your wallet)</label>
+                      </div>
+                      <p className={`small mb-3 ${liquidityValid ? 'text-muted' : 'text-warning'}`}>
+                        {liquidityValid
+                          ? 'You fund the starting pool and receive the LP tokens + 2% pool fees. Bigger pool = steadier prices.'
+                          : 'Minimum 0.5 USDC.'}
+                      </p>
+                    </>
+                  )}
 
                   {/* live preview */}
                   <label className="text-muted small d-block mb-2">PREVIEW</label>

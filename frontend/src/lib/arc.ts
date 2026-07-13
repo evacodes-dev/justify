@@ -1,5 +1,5 @@
-import { createPublicClient, defineChain, http, type Chain, type PublicClient } from 'viem'
-import { CHAIN, ensureConfig, USDC_ABI, FPMM_ABI, CTF_ABI, type ApiMarket } from './markets'
+import { createPublicClient, defineChain, http, parseEventLogs, type Chain, type PublicClient } from 'viem'
+import { CHAIN, ensureConfig, USDC_ABI, FPMM_ABI, CTF_ABI, REGISTRY_ABI, type ApiMarket } from './markets'
 
 // On-chain reads/writes over the audited Gnosis CTF/FPMM stack on Base.
 // Money sits in ConditionalTokens (ERC-1155); trading happens on the market's FPMM.
@@ -164,4 +164,44 @@ export async function usdcBalance(address: `0x${string}`): Promise<number> {
   const { pub } = await client()
   const raw = (await pub.readContract({ address: CHAIN.usdc, abi: USDC_ABI, functionName: 'balanceOf', args: [address] })) as bigint
   return fromUsdc(raw)
+}
+
+// Self-create mode: the creator signs registry.createMarket from their own wallet and
+// funds the initial liquidity themselves (LP tokens + pool fees are theirs). The market
+// id comes from the receipt's MarketCreated event — never from a post-tx read.
+export async function createMarketSelf(
+  walletClient: any,
+  input: { question: string; metadataURI: string; closeTimeSec: number; liquidityHuman: number },
+): Promise<{ id: number; fpmm: string; txHash: string }> {
+  const { pub, chain } = await client()
+  const cfg = await ensureConfig()
+  if (!cfg.registry) throw new Error('registry address missing from /api/config')
+  const account = walletClient.account
+  const L = toUsdc(input.liquidityHuman)
+
+  const registered = (await pub.readContract({
+    address: cfg.registry, abi: REGISTRY_ABI, functionName: 'isCreator', args: [account.address],
+  })) as boolean
+  if (!registered) throw new Error('Your wallet is not registered as an on-chain creator yet — ask the team to (re)grant your creator role.')
+
+  const allowance = (await pub.readContract({
+    address: CHAIN.usdc, abi: USDC_ABI, functionName: 'allowance', args: [account.address, cfg.registry],
+  })) as bigint
+  if (allowance < L) {
+    const ah = await walletClient.writeContract({
+      address: CHAIN.usdc, abi: USDC_ABI, functionName: 'approve', args: [cfg.registry, L],
+      chain, account,
+    })
+    await pub.waitForTransactionReceipt({ hash: ah as `0x${string}` })
+  }
+
+  const txHash = await walletClient.writeContract({
+    address: cfg.registry, abi: REGISTRY_ABI, functionName: 'createMarket',
+    args: [CHAIN.usdc, input.question, input.metadataURI, BigInt(input.closeTimeSec), L],
+    chain, account,
+  })
+  const receipt = await pub.waitForTransactionReceipt({ hash: txHash as `0x${string}` })
+  const created = parseEventLogs({ abi: REGISTRY_ABI, logs: receipt.logs, eventName: 'MarketCreated' })[0] as any
+  if (!created) throw new Error('created, but MarketCreated event missing from the receipt')
+  return { id: Number(created.args.id), fpmm: created.args.fpmm as string, txHash }
 }

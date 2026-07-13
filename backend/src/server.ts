@@ -43,6 +43,7 @@ const configPayload = async () => ({
   usdc: config.usdc,
   usdcDecimals: config.usdcDecimals,
   approvalThresholdUsdc: config.approvalThresholdUsdc,
+  createMode: config.createMode,
 });
 app.get("/config", configPayload);
 app.get("/api/config", configPayload); // /api/* alias — prod nginx only proxies /api

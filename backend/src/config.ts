@@ -74,9 +74,16 @@ export const config = {
     countryGate: (process.env.FEATURE_COUNTRY_GATE ?? "off") !== "off",
     // creator role granted ONLY via the admin endpoint; World ID = just a verified checkmark
     creatorViaAdmin: (process.env.CREATOR_VIA_ADMIN ?? "true") !== "false",
+    // gas dotation: off = users bring their own ETH for gas (instantly reversible via env)
+    gasDotation: (process.env.GAS_DOTATION ?? "on") !== "off",
   },
   // shared secret for /api/admin/* (x-admin-secret header). Unset = admin API disabled.
   adminSecret: process.env.ADMIN_SECRET ?? "",
+
+  // Market creation mode: 'backend' = backend signs & funds (current default);
+  // 'self' = the creator signs registry.createMarket from their own wallet and funds the
+  // initial liquidity themselves. Flip via env + restart — instantly reversible.
+  createMode: (process.env.CREATE_MODE === "self" ? "self" : "backend") as "self" | "backend",
 
   // AI
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",

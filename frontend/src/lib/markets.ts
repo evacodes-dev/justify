@@ -12,6 +12,7 @@ export interface ChainConfig {
   settler?: `0x${string}`
   usdc: `0x${string}`
   usdcDecimals: number
+  createMode?: 'self' | 'backend'
 }
 
 export const CHAIN: ChainConfig = {
@@ -120,6 +121,13 @@ export const USDC_ABI = [
 ] as const
 
 // Gnosis FixedProductMarketMaker. outcomeIndex: 0 = NO, 1 = YES.
+// Our thin MarketRegistry over the audited stack (self-create mode signs this directly).
+export const REGISTRY_ABI = [
+  { type: 'function', name: 'createMarket', stateMutability: 'nonpayable', inputs: [{ name: 'collateral', type: 'address' }, { name: 'question', type: 'string' }, { name: 'metadataURI', type: 'string' }, { name: 'closeTime', type: 'uint64' }, { name: 'initialLiquidity', type: 'uint256' }], outputs: [{ name: 'id', type: 'uint256' }, { name: 'fpmm', type: 'address' }] },
+  { type: 'function', name: 'isCreator', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'bool' }] },
+  { type: 'event', name: 'MarketCreated', inputs: [{ name: 'id', type: 'uint256', indexed: true }, { name: 'fpmm', type: 'address', indexed: false }, { name: 'conditionId', type: 'bytes32', indexed: false }, { name: 'creator', type: 'address', indexed: true }, { name: 'question', type: 'string', indexed: false }, { name: 'closeTime', type: 'uint64', indexed: false }] },
+] as const
+
 export const FPMM_ABI = [
   { type: 'function', name: 'calcBuyAmount', stateMutability: 'view', inputs: [{ type: 'uint256', name: 'investmentAmount' }, { type: 'uint256', name: 'outcomeIndex' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'calcSellAmount', stateMutability: 'view', inputs: [{ type: 'uint256', name: 'returnAmount' }, { type: 'uint256', name: 'outcomeIndex' }], outputs: [{ type: 'uint256' }] },

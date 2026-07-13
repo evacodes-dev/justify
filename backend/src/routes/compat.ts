@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
+import { parseEventLogs } from "viem";
 import { config, toUsdc, txUrl } from "../config.js";
 import { backendSigner, publicClient, arc } from "../chain.js";
 import { erc20Abi, registryAbi } from "../abis.js";
@@ -364,11 +365,13 @@ export async function compatRoutes(app: FastifyInstance) {
         }
         return wallet.writeContract({ address: target, abi: registryAbi, functionName: "createMarket", args: [config.usdc, question, metadataURI, closeTime, L], account, chain: arc });
       });
-      await publicClient.waitForTransactionReceipt({ hash: deployTx as `0x${string}` });
-      const count = (await publicClient.readContract({ address: target, abi: registryAbi, functionName: "marketCount" })) as bigint;
-      const id = Number(count) - 1;
-      const info = (await publicClient.readContract({ address: target, abi: registryAbi, functionName: "markets", args: [BigInt(id)] })) as readonly unknown[];
-      const address = info[0] as string;
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: deployTx as `0x${string}` });
+      // id/address from the receipt's own MarketCreated event — deterministic. (Re-reading
+      // marketCount after the tx hit a lagging RPC node once and mis-attributed the market.)
+      const created = parseEventLogs({ abi: registryAbi, logs: receipt.logs, eventName: "MarketCreated" })[0] as any;
+      if (!created) return reply.code(502).send({ error: "create succeeded but MarketCreated event missing" });
+      const id = Number(created.args.id);
+      const address = created.args.fpmm as string;
       if (isAddr(creator)) { const s = submitters(); s[String(id)] = String(creator).toLowerCase(); kv.set("submitters", s); }
       return { address, question, id, explorer: config.explorer, deployTx };
     } catch (e) {

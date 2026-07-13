@@ -1,11 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { config } from "../config.js";
 import { db } from "../store.js";
+import { backendSigner, publicClient, arc } from "../chain.js";
+import { registryAbi } from "../abis.js";
 
 // Admin API: the ONLY way to grant the creator role (product decision — World ID verify is
 // just a checkmark; creators are hand-picked). Protected by a shared secret header.
-// Note: no on-chain registration needed — the backend itself is the on-chain registered
-// creator and deploys markets on users' behalf; `creator` is an API-level role.
+// Granting also registers the creator ON-CHAIN (backend = registry verifier) so the
+// self-create mode (user signs registry.createMarket from their own wallet) works too.
 
 export async function adminRoutes(app: FastifyInstance) {
   const guard = (req: any, reply: any): boolean => {
@@ -28,7 +30,26 @@ export async function adminRoutes(app: FastifyInstance) {
     const u = db.users.find((x) => x.address.toLowerCase() === address!.toLowerCase());
     if (!u) return reply.code(404).send({ error: "user not found (must verify with World ID first)" });
     db.users.patch(u.id, { creator: grant !== false });
-    return { ok: true, address: u.address, name: u.name, creator: grant !== false };
+
+    // best-effort on-chain registration for the self-create mode (no on-chain revoke exists;
+    // the db flag remains the gate for the backend-create mode)
+    let onchainTx: string | undefined;
+    if (grant !== false && config.registry) {
+      try {
+        const already = (await publicClient.readContract({
+          address: config.registry, abi: registryAbi, functionName: "isCreator", args: [u.address as `0x${string}`],
+        })) as boolean;
+        if (!already) {
+          onchainTx = await backendSigner().run(({ wallet, account }) =>
+            wallet.writeContract({ address: config.registry!, abi: registryAbi, functionName: "registerCreator", args: [u.address as `0x${string}`], account, chain: arc }),
+          );
+          await publicClient.waitForTransactionReceipt({ hash: onchainTx as `0x${string}` });
+        }
+      } catch (e) {
+        app.log.error("on-chain registerCreator: " + (e as Error).message);
+      }
+    }
+    return { ok: true, address: u.address, name: u.name, creator: grant !== false, onchainTx };
   });
 
   // list current creators

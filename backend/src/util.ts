@@ -24,7 +24,9 @@ export async function verifyWorldProof(rpId: string, idkitResponse: unknown): Pr
 
 /// Top up an address's NATIVE balance (gas) if below the configured threshold.
 /// Network-aware via config (Base native = ETH, tiny drip). Returns the tx hash or null.
+/// GAS_DOTATION=off flips the product to "users bring their own gas" — no code changes.
 export async function ensureGas(address: `0x${string}`): Promise<string | null> {
+  if (!config.features.gasDotation) return null;
   const balWei = await publicClient.getBalance({ address });
   if (Number(balWei) / 1e18 >= config.gasDripThreshold) return null;
   const hash = await backendSigner().run(({ wallet, account }) =>
