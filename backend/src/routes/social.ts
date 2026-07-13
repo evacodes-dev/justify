@@ -17,6 +17,26 @@ export const followersOf = (addressLower: string): string[] =>
 export const commentsOf = (marketId: number | string): CommentRow[] =>
   kv.get<CommentsMap>("comments", {})[String(marketId)] ?? [];
 
+type PostRow = { id: string; address: string; text: string; ts: number };
+
+const userByAddr = () => new Map(db.users.all().map((u) => [u.address.toLowerCase(), u]));
+const enrich = (rows: { address: string }[] | PostRow[] | CommentRow[]) => {
+  const users = userByAddr();
+  return (rows as any[]).map((r) => {
+    const u = users.get(r.address);
+    return {
+      ...r,
+      name: u?.name ?? `${r.address.slice(0, 6)}…${r.address.slice(-4)}`,
+      avatar: u?.avatar || "/img/images.jpeg",
+      verified: !!u?.verified,
+    };
+  });
+};
+
+/// last N comments of a market, enriched — for feed-card previews
+export const recentCommentsOf = (marketId: number | string, n = 3) =>
+  enrich(commentsOf(marketId).slice(-n));
+
 const isAddr = (a?: string) => /^0x[a-fA-F0-9]{40}$/.test(a ?? "");
 
 // resolve a user key (name or address) to their lowercase address
@@ -82,6 +102,51 @@ export async function socialRoutes(app: FastifyInstance) {
         };
       }),
     };
+  });
+
+  // ── text posts ("vogels" — post your crypto ideas) ──
+  app.post<{ Body: any }>("/api/post", async (req, reply) => {
+    const { address, text } = (req.body ?? {}) as { address?: string; text?: string };
+    if (!isAddr(address)) return reply.code(400).send({ error: "address" });
+    const t = String(text ?? "").trim();
+    if (t.length < 1 || t.length > 500) return reply.code(400).send({ error: "text must be 1..500 chars" });
+    const posts = kv.get<PostRow[]>("posts", []);
+    const row: PostRow = { id: randomUUID(), address: address!.toLowerCase(), text: t, ts: Date.now() };
+    kv.set("posts", [...posts, row].slice(-500));
+    return { ok: true, post: enrich([row])[0] };
+  });
+
+  app.get<{ Querystring: { author?: string; limit?: string } }>("/api/posts", async (req) => {
+    let rows = kv.get<PostRow[]>("posts", []);
+    const author = String(req.query.author ?? "").toLowerCase();
+    if (author) {
+      const u = db.users.find((x) => x.name.toLowerCase() === author || x.address.toLowerCase() === author);
+      const addr = u?.address.toLowerCase() ?? author;
+      rows = rows.filter((p) => p.address === addr);
+    }
+    const limit = Math.min(100, Number(req.query.limit) || 30);
+    return { posts: enrich(rows.slice(-limit).reverse()) };
+  });
+
+  // ── profile tabs: liked markets + @mentions ──
+  app.get<{ Params: { address: string } }>("/api/liked/:address", async (req, reply) => {
+    if (!isAddr(req.params.address)) return reply.code(400).send({ error: "address" });
+    const a = req.params.address.toLowerCase();
+    const all = kv.get<LikesMap>("likes", {});
+    const ids = Object.entries(all).filter(([, addrs]) => addrs.includes(a)).map(([id]) => Number(id));
+    return { marketIds: ids };
+  });
+
+  app.get<{ Params: { name: string } }>("/api/mentions/:name", async (req) => {
+    const handle = String(req.params.name).toLowerCase().replace(/^@/, "");
+    const rx = new RegExp(`@${handle}\\b`, "i");
+    const posts = kv.get<PostRow[]>("posts", []).filter((p) => rx.test(p.text)).map((p) => ({ ...p, kind: "post" as const }));
+    const cm = kv.get<CommentsMap>("comments", {});
+    const comments = Object.entries(cm).flatMap(([mid, rows]) =>
+      rows.filter((c) => rx.test(c.text)).map((c) => ({ ...c, kind: "comment" as const, marketId: Number(mid) })),
+    );
+    const items = enrich([...posts, ...comments].sort((a, b) => b.ts - a.ts).slice(0, 50) as any);
+    return { mentions: items };
   });
 
   // ── follows (subscribe to creators) ──

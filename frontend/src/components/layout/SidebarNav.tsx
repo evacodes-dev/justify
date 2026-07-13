@@ -5,7 +5,6 @@ const mainNavItems = [
   { to: '/market', icon: 'candlestick_chart', label: 'Markets' },
   { to: '/portfolio', icon: 'cases', label: 'Portfolio' },
   { to: '/deposit', icon: 'account_balance_wallet', label: 'Deposit' },
-  { to: '/notification', icon: 'notification_add', label: 'Notifications' },
   { to: '/profile', icon: 'account_circle', label: 'My Profile' },
   { to: '/create', icon: 'local_fire_department', label: 'Create Market' },
 ]

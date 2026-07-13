@@ -75,13 +75,14 @@ export async function compatRoutes(app: FastifyInstance) {
   };
 
   // markets for the on-chain layer (FPMM addresses + live price)
-  const { likesOf, commentsOf } = await import("./social.js");
+  const { likesOf, commentsOf, recentCommentsOf } = await import("./social.js");
   app.get("/api/markets", async () => ({
     markets: db.markets.all().sort((a, b) => b.createdAt - a.createdAt).map((m) => ({
       id: m.id, address: m.address, question: m.question, metadataURI: m.metadataURI,
       priceYes: m.priceYes, volume: m.volume, resolved: m.resolved, outcome: m.outcome, closeTime: m.closeTime, oracle: m.oracle,
-      creator: m.creator, creatorName: creatorNameOf(m.id, m.creator),
+      creator: m.creator, creatorName: creatorNameOf(m.id, m.creator), createdAt: m.createdAt,
       likes: likesOf(m.id).length, comments: commentsOf(m.id).length,
+      recentComments: recentCommentsOf(m.id, 3),
       // Path-B (Gnosis CTF) extras — null on the legacy stack
       conditionId: m.conditionId ?? null, posYes: m.posYes ?? null, posNo: m.posNo ?? null,
     })),

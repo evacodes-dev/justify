@@ -13,7 +13,6 @@ import ProfilePage from './pages/ProfilePage'
 import UserProfilePage from './pages/UserProfilePage'
 import EditProfilePage from './pages/EditProfilePage'
 import CreatePage from './pages/CreatePage'
-import NotificationPage from './pages/NotificationPage'
 import AdminPage from './pages/AdminPage'
 import HelpPage from './pages/HelpPage'
 import NotFoundPage from './pages/NotFoundPage'
@@ -39,7 +38,6 @@ export default function App() {
             <Route path="/u/:name" element={<UserProfilePage />} />
             <Route path="/edit-profile" element={<EditProfilePage />} />
             <Route path="/create" element={<CreatePage />} />
-            <Route path="/notification" element={<NotificationPage />} />
             <Route path="/help" element={<HelpPage />} />
             {/* hidden — reachable by URL only, no nav entry */}
             <Route path="/admin" element={<AdminPage />} />

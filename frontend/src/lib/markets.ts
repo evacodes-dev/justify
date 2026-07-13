@@ -80,7 +80,8 @@ export function toUiMarket(
 export type ApiMarket = {
   id: number; address: `0x${string}`; question: string; metadataURI: string;
   priceYes: number; volume: number; resolved: boolean; outcome?: number; closeTime: number;
-  creator: string; creatorName?: string; likes: number;
+  creator: string; creatorName?: string; createdAt?: number; likes: number; comments?: number;
+  recentComments?: { id: string; address: string; name: string; avatar: string; verified: boolean; text: string; ts: number }[];
   // Gnosis CTF fields (null on legacy rows): ERC-1155 position ids are decimal strings.
   conditionId: `0x${string}` | null; posYes: string | null; posNo: string | null
 }

@@ -3,6 +3,7 @@ import RightSidebar from '../components/layout/RightSidebar'
 import ProfileHeader from '../components/profile/ProfileHeader'
 import FollowingList from '../components/profile/FollowingList'
 import ArcPositions from '../components/portfolio/ArcPositions'
+import ProfileTabs from '../components/profile/ProfileTabs'
 import { useUserProfile } from '../hooks/useUserProfile'
 import { useWallet } from '../hooks/useWallet'
 import { useUi } from '../components/layout/UiContext'
@@ -30,7 +31,10 @@ export default function ProfilePage() {
           ) : loading ? (
             <div className="text-center py-5"><div className="spinner-border" role="status" /></div>
           ) : data ? (
-            <ProfileHeader user={data.user} markets={data.markets} isMe />
+            <>
+              <ProfileHeader user={data.user} markets={data.markets} isMe />
+              <ProfileTabs name={data.user.name} address={data.user.address as `0x${string}`} />
+            </>
           ) : (
             <div className="bg-glass rounded-4 shadow-sm p-4 text-center m-lg-3">
               <p className="text-muted mb-3">No profile yet — verify with World ID to claim your name.</p>

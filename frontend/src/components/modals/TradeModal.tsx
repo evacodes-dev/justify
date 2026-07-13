@@ -23,7 +23,8 @@ export default function TradeModal() {
     if (tradeTarget) {
       setSide(tradeTarget.side)
       setMode(tradeTarget.mode)
-      setAmount('0.5')
+      // confirmation UX: carry over what the user already typed in the trade box
+      setAmount(tradeTarget.amount && tradeTarget.amount > 0 ? String(tradeTarget.amount) : '0.5')
       setPhase('idle')
     }
   }, [tradeTarget])

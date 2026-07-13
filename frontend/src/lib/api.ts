@@ -41,6 +41,24 @@ export function createMarket(input: {
 }
 
 export interface MarketComment { id: string; address: string; name: string; avatar: string; verified: boolean; text: string; ts: number }
+export interface UserPost { id: string; address: string; name: string; avatar: string; verified: boolean; text: string; ts: number }
+export interface Mention extends UserPost { kind: 'post' | 'comment'; marketId?: number }
+
+export function createPost(input: { address: string; text: string }) {
+  return apiFetch<{ ok: boolean; post: UserPost }>('/api/post', { method: 'POST', body: JSON.stringify(input) })
+}
+export function getPosts(author?: string, limit = 30) {
+  const q = new URLSearchParams()
+  if (author) q.set('author', author)
+  q.set('limit', String(limit))
+  return apiFetch<{ posts: UserPost[] }>(`/api/posts?${q}`)
+}
+export function getLikedMarketIds(address: string) {
+  return apiFetch<{ marketIds: number[] }>(`/api/liked/${address}`)
+}
+export function getMentions(name: string) {
+  return apiFetch<{ mentions: Mention[] }>(`/api/mentions/${encodeURIComponent(name)}`)
+}
 export function getComments(marketId: number | string) {
   return apiFetch<{ comments: MarketComment[] }>(`/api/comments/${marketId}`)
 }

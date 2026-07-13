@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import RightSidebar from '../components/layout/RightSidebar'
 import ProfileHeader from '../components/profile/ProfileHeader'
+import ProfileTabs from '../components/profile/ProfileTabs'
 import { useUserProfile } from '../hooks/useUserProfile'
 import { useWallet } from '../hooks/useWallet'
 
@@ -24,7 +25,10 @@ export default function UserProfilePage() {
           ) : error || !data ? (
             <p className="text-muted text-center py-5">User not found.</p>
           ) : (
+            <>
             <ProfileHeader user={data.user} markets={data.markets} isMe={isMe} />
+              <ProfileTabs name={data.user.name} address={data.user.address as `0x${string}`} />
+            </>
           )}
         </div>
       </main>

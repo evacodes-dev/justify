@@ -3,18 +3,21 @@ import RightSidebar from '../components/layout/RightSidebar'
 import AccountSlider from '../components/feed/AccountSlider'
 import AccountListItem from '../components/feed/AccountListItem'
 import MarketCard from '../components/market/MarketCard'
+import MarketFeedItem from '../components/feed/MarketFeedItem'
+import UserPostCard from '../components/feed/UserPostCard'
 import EventCard from '../components/feed/EventCard'
 import EmptyState from '../components/common/EmptyState'
+import { useUi } from '../components/layout/UiContext'
 import { useMarkets, type MarketRow } from '../hooks/useMarkets'
 import { useCreators } from '../hooks/useCreators'
 import { toUiMarket } from '../lib/markets'
-import { getActivityFeed, type ActivityItem } from '../lib/api'
+import { getActivityFeed, getPosts, type ActivityItem, type UserPost } from '../lib/api'
 import type { Account } from '../types'
 
 type Tab = 'feed' | 'people' | 'trending'
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: 'feed', label: 'Markets' },
+  { id: 'feed', label: 'Feed' },
   { id: 'people', label: 'Creators' },
   { id: 'trending', label: 'Trending' },
 ]
@@ -58,7 +61,7 @@ function ActivitySection({ accounts }: { accounts: Account[] }) {
     let alive = true
     const load = () =>
       getActivityFeed()
-        .then((b) => { if (alive) setItems((b.feed ?? []).filter((f) => f.kind !== 'agent').slice(0, 12)) })
+        .then((b) => { if (alive) setItems((b.feed ?? []).filter((f) => f.kind !== 'agent').slice(0, 8)) })
         .catch(() => {})
     load()
     const t = setInterval(load, 15_000)
@@ -73,10 +76,45 @@ function ActivitySection({ accounts }: { accounts: Account[] }) {
   )
 }
 
+// "Post your crypto ideas" composer strip → opens the post modal.
+function ComposerStrip() {
+  const { openModal } = useUi()
+  return (
+    <div className="px-lg-3 mb-3">
+      <div
+        className="input-group shadow-sm rounded-4 overflow-hidden py-2 bg-glass"
+        role="button"
+        onClick={() => openModal('post')}
+      >
+        <span className="input-group-text material-icons border-0 bg-transparent text-primary">account_circle</span>
+        <span className="form-control border-0 bg-transparent fw-light ps-1 text-muted">Post your crypto ideas</span>
+        <span className="input-group-text bg-transparent border-0 material-icons text-primary">add_circle</span>
+      </div>
+    </div>
+  )
+}
+
+type FeedEntry = { ts: number } & ({ kind: 'post'; post: UserPost } | { kind: 'market'; row: MarketRow })
+
 export default function FeedPage() {
   const [activeTab, setActiveTab] = useState<Tab>('feed')
   const { markets, loading } = useMarkets()
   const creators = useCreators()
+  const [posts, setPosts] = useState<UserPost[]>([])
+
+  useEffect(() => {
+    const load = () => getPosts(undefined, 30).then((b) => setPosts(b.posts)).catch(() => {})
+    load()
+    window.addEventListener('posts:changed', load)
+    const t = setInterval(load, 20_000)
+    return () => { window.removeEventListener('posts:changed', load); clearInterval(t) }
+  }, [])
+
+  // merged social feed: text posts + markets-as-posts, newest first
+  const entries: FeedEntry[] = [
+    ...posts.map((p): FeedEntry => ({ ts: p.ts, kind: 'post', post: p })),
+    ...markets.map((row): FeedEntry => ({ ts: row.api.createdAt ?? 0, kind: 'market', row })),
+  ].sort((a, b) => b.ts - a.ts)
 
   return (
     <>
@@ -100,6 +138,7 @@ export default function FeedPage() {
           <div className="tab-content">
             {activeTab === 'feed' && (
               <div className="tab-pane fade show active" role="tabpanel">
+                <ComposerStrip />
                 {creators.length > 0 && (
                   <div>
                     <div className="d-flex align-items-center justify-content-between mb-1 px-lg-3">
@@ -109,10 +148,16 @@ export default function FeedPage() {
                   </div>
                 )}
                 <ActivitySection accounts={creators} />
-                {loading ? (
+                {loading && !entries.length ? (
                   <div className="text-center py-5"><div className="spinner-border" role="status" /></div>
+                ) : entries.length ? (
+                  entries.map((e) =>
+                    e.kind === 'post'
+                      ? <UserPostCard key={`p-${e.post.id}`} post={e.post} />
+                      : <MarketFeedItem key={`m-${e.row.demo.id}`} ui={uiOf(e.row)} api={e.row.api} accounts={creators} />,
+                  )
                 ) : (
-                  <MarketGrid rows={markets} />
+                  <EmptyState icon="dynamic_feed" title="Nothing here yet" hint="Markets and posts from creators will show up here." />
                 )}
               </div>
             )}

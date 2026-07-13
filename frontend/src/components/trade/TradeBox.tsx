@@ -37,7 +37,8 @@ export default function TradeBox({ yesOption, noOption, live }: { yesOption: str
 
   const onTrade = () => {
     if (!live) return
-    openTrade({ market: live.market, side, mode, yesPct })
+    const typed = parseFloat(amount)
+    openTrade({ market: live.market, side, mode, yesPct, amount: typed > 0 ? typed : undefined })
   }
 
   const disabled = (live && resolved) || (mode === 'sell' && !canSell)

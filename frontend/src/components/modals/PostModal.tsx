@@ -1,8 +1,37 @@
+import { useState } from 'react'
 import Modal from 'react-bootstrap/Modal'
 import { useUi } from '../layout/UiContext'
+import { useWallet } from '../../hooks/useWallet'
+import { useToast } from '../common/Toast'
+import { createPost } from '../../lib/api'
 
+// "Post your crypto ideas" — a real text post (vogel). On success the feed refreshes
+// via the window 'posts:changed' event.
 export default function PostModal() {
   const { activeModal, closeModal } = useUi()
+  const { address, isLoggedIn, promptLogin } = useWallet()
+  const toast = useToast()
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const submit = async () => {
+    const t = text.trim()
+    if (!t || sending) return
+    if (!isLoggedIn || !address) { promptLogin(); return }
+    setSending(true)
+    try {
+      await createPost({ address, text: t })
+      setText('')
+      closeModal()
+      window.dispatchEvent(new Event('posts:changed'))
+      toast.show('Posted', { kind: 'success' })
+    } catch (e) {
+      toast.show((e as Error).message || 'Could not post', { kind: 'error' })
+    } finally {
+      setSending(false)
+    }
+  }
+
   return (
     <Modal
       show={activeModal === 'post'}
@@ -34,6 +63,9 @@ export default function PostModal() {
             placeholder="Leave a comment here"
             id="floatingTextarea2"
             style={{ height: 200 }}
+            maxLength={500}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
           ></textarea>
           <label htmlFor="floatingTextarea2" className="h6 text-muted mb-0">
             What's on your mind...
@@ -42,22 +74,18 @@ export default function PostModal() {
       </div>
       <div className="modal-footer justify-content-start px-1 py-1 bg-glass shadow-sm rounded-5">
         <div className="rounded-4 m-0 px-3 py-2 d-flex align-items-center justify-content-between w-75">
-          <a href="#" className="text-muted text-decoration-none material-icons">insert_link</a>
-          <a href="#" className="text-muted text-decoration-none material-icons">image</a>
-          <a href="#" className="text-muted text-decoration-none material-icons">smart_display</a>
-          <span className="text-muted">0/500</span>
+          <span className="text-muted small">Tip: mention creators with @name</span>
+          <span className="text-muted">{text.length}/500</span>
         </div>
         <div className="ms-auto m-0">
-          <a
-            href="#"
+          <button
+            type="button"
             className="btn btn-primary rounded-5 fw-bold px-3 py-2 fs-6 mb-0 d-flex align-items-center"
-            onClick={(e) => {
-              e.preventDefault()
-              closeModal()
-            }}
+            disabled={sending || !text.trim()}
+            onClick={() => void submit()}
           >
-            <span className="material-icons me-2 md-16">send</span>Post
-          </a>
+            <span className="material-icons me-2 md-16">send</span>{sending ? 'Posting…' : 'Post'}
+          </button>
         </div>
       </div>
     </Modal>

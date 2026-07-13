@@ -10,6 +10,8 @@ export interface TradeTarget {
   side: 0 | 1
   mode: 'buy' | 'sell'
   yesPct: number
+  /** amount the user already typed in the trade box — the modal prefills it as a confirmation */
+  amount?: number
 }
 
 interface UiContextValue {
