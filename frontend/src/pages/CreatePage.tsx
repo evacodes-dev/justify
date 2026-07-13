@@ -18,6 +18,17 @@ function defaultClose(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`
 }
 
+// Locale-proof price parsing: "1,785" (US thousands) → 1785; "1785,5" (EU decimal) → 1785.5;
+// "1 785.50" → 1785.5. Naive Number("1,785") in a ru locale silently becomes 1.785 — a
+// $1,785 target turning into $1.785 would resolve the market wrong.
+function parseThreshold(raw: string): number {
+  const s = raw.replace(/\s/g, '')
+  if (!s) return NaN
+  const commaAsThousands = /,\d{3}(?:[.,]|$)/.test(s) || (s.includes(',') && s.includes('.'))
+  const normalized = commaAsThousands ? s.replace(/,/g, '') : s.replace(',', '.')
+  return Number(normalized)
+}
+
 // Market creation is a hand-granted role (admin API), NOT unlocked by World ID —
 // verify only gives the checkmark. Non-creators see an explainer instead of the form.
 // Two modes: PRICE (structured -> deterministic Chainlink resolution, instant at close)
@@ -52,34 +63,40 @@ export default function CreatePage() {
 
   const closeDate = useMemo(() => (closeAt ? new Date(closeAt) : null), [closeAt])
   const closeValid = !!closeDate && closeDate.getTime() > Date.now() + 30 * 60e3
+  // local-time hint for the creator; canonical en-US date inside the on-chain question
+  // (the question text is what the oracle and challengers read — keep it unambiguous)
   const closeHuman = closeDate
     ? closeDate.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
     : '—'
+  const closeCanonical = closeDate
+    ? closeDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short' })
+    : '—'
+
+  const parsedThreshold = useMemo(() => parseThreshold(threshold), [threshold])
 
   // the question shown/created for price markets is composed from the structured fields
   const priceQuestion = useMemo(() => {
-    const t = Number(threshold)
-    if (!(t > 0)) return ''
-    return `Will ${asset} be ${comparator} $${t.toLocaleString()} on ${closeHuman}?`
-  }, [asset, comparator, threshold, closeHuman])
+    if (!(parsedThreshold > 0)) return ''
+    return `Will ${asset} be ${comparator} $${parsedThreshold.toLocaleString('en-US')} on ${closeCanonical}?`
+  }, [asset, comparator, parsedThreshold, closeCanonical])
 
   const finalQuestion = mode === 'price' ? priceQuestion : question.trim()
   const canSubmit =
     closeValid &&
-    (mode === 'price' ? Number(threshold) > 0 : finalQuestion.length >= 6 && criteria.trim().length >= 20)
+    (mode === 'price' ? parsedThreshold > 0 : finalQuestion.length >= 6 && criteria.trim().length >= 20)
 
   // live preview card (fabricated ApiMarket run through the real card pipeline)
   const preview = useMemo(() => {
     const fake: ApiMarket = {
       id: -1, address: '0x0000000000000000000000000000000000000000',
-      question: finalQuestion || (mode === 'price' ? 'Will ETH be above $… on …?' : 'Your market question…'),
+      question: finalQuestion || (mode === 'price' ? `Will ${asset} be ${comparator} $… on …?` : 'Your market question…'),
       metadataURI: JSON.stringify({ category }),
       priceYes: 0.5, volume: 0, resolved: false, closeTime: closeDate ? Math.floor(closeDate.getTime() / 1000) : 0,
       creator: address ?? '', creatorName: myName || 'you', likes: 0,
       conditionId: null, posYes: null, posNo: null,
     }
     return toUiMarket(apiMarketToDemo(fake), { yesPct: 50, total: 0, resolved: false, likes: 0 })
-  }, [finalQuestion, category, closeDate, address, myName, mode])
+  }, [finalQuestion, category, closeDate, address, myName, mode, asset, comparator])
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -88,7 +105,7 @@ export default function CreatePage() {
     setPhase('creating'); setErr('')
     try {
       const priceConfig: PriceConfig | undefined =
-        mode === 'price' ? { asset, comparator, threshold: Number(threshold) } : undefined
+        mode === 'price' ? { asset, comparator, threshold: parsedThreshold } : undefined
       const r = await createMarket({
         question: finalQuestion,
         description: mode === 'custom' ? criteria.trim() : `Resolves automatically from the Chainlink ${asset}/USD feed at close time.`,
@@ -172,12 +189,17 @@ export default function CreatePage() {
                         </div>
                         <div className="col-4">
                           <div className="form-floating">
-                            <input type="number" min="0" step="any" className="form-control rounded-4 bg-glass" id="pt"
+                            <input type="text" inputMode="decimal" className="form-control rounded-4 bg-glass" id="pt"
                               value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder="4000" />
                             <label htmlFor="pt" className="text-muted">TARGET $</label>
                           </div>
                         </div>
                       </div>
+                      {threshold.trim() && (
+                        <p className={`small mb-1 ${parsedThreshold > 0 ? 'text-body' : 'text-warning'}`}>
+                          {parsedThreshold > 0 ? `Target parsed as $${parsedThreshold.toLocaleString('en-US')}` : 'Enter a valid price.'}
+                        </p>
+                      )}
                       <p className="text-muted small mb-3">
                         <span className="material-icons md-13 me-1 align-middle" style={{ fontSize: 14 }}>link</span>
                         Resolves on-chain from the Chainlink {asset}/USD feed the moment the market closes — no waiting, no disputes.

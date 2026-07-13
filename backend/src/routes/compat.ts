@@ -350,10 +350,17 @@ export async function compatRoutes(app: FastifyInstance) {
       // create through MarketRegistry over the audited Gnosis stack (market address = FPMM)
       const target = config.registry!;
       const deployTx = await backendSigner().run(async ({ wallet, account }) => {
-        const allowance = (await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, target] })) as bigint;
+        let allowance = (await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, target] })) as bigint;
         if (allowance < L) {
-          const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [target, L], account, chain: arc });
+          // MAX approve once + re-read until the (load-balanced, lagging) RPC reflects it —
+          // otherwise createMarket's simulation sees the stale allowance and reverts.
+          const MAX = 2n ** 256n - 1n;
+          const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [target, MAX], account, chain: arc });
           await publicClient.waitForTransactionReceipt({ hash: ah });
+          for (let i = 0; i < 12 && allowance < L; i++) {
+            await new Promise((r) => setTimeout(r, 2500));
+            allowance = (await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, target] })) as bigint;
+          }
         }
         return wallet.writeContract({ address: target, abi: registryAbi, functionName: "createMarket", args: [config.usdc, question, metadataURI, closeTime, L], account, chain: arc });
       });
