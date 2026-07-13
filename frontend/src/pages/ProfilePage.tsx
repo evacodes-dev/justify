@@ -5,11 +5,13 @@ import FollowingList from '../components/profile/FollowingList'
 import ArcPositions from '../components/portfolio/ArcPositions'
 import { useUserProfile } from '../hooks/useUserProfile'
 import { useWallet } from '../hooks/useWallet'
+import { useUi } from '../components/layout/UiContext'
 
 // My profile (real). Identity + markets I created + my on-chain positions.
 export default function ProfilePage() {
   const { address, isLoggedIn, promptLogin } = useWallet()
   const { data, loading } = useUserProfile(address)
+  const { openModal } = useUi()
 
   return (
     <>
@@ -32,7 +34,7 @@ export default function ProfilePage() {
           ) : (
             <div className="bg-glass rounded-4 shadow-sm p-4 text-center m-lg-3">
               <p className="text-muted mb-3">No profile yet — verify with World ID to claim your name.</p>
-              <Link to="/create" className="btn btn-primary rounded-4 fw-bold text-decoration-none">Get verified</Link>
+              <button className="btn btn-primary rounded-4 fw-bold" onClick={() => openModal('onboard')}>Get verified</button>
             </div>
           )}
 
