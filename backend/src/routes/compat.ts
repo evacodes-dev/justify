@@ -302,20 +302,50 @@ export async function compatRoutes(app: FastifyInstance) {
 
   // create a market (backend is a registered creator; funds the initial liquidity)
   app.post<{ Body: any }>("/api/create-market", async (req, reply) => {
-    const { question, description, category, image, closeTimeDays, creator, countries, restricted } = (req.body ?? {}) as any;
+    const { question, description, category, image, closeTimeDays, closeTimeTs, creator, countries, restricted, priceConfig } = (req.body ?? {}) as any;
     if (!question || String(question).length < 6) return reply.code(400).send({ error: "question too short" });
     // product rule: creators are granted via the admin API only (World ID = just a checkmark)
     if (config.features.creatorViaAdmin) {
       const cu = db.users.find((x) => x.address.toLowerCase() === String(creator ?? "").toLowerCase());
       if (!cu?.creator) return reply.code(403).send({ error: "creator role required (granted by admin)" });
     }
-    const L = toUsdc(0.5); // small initial liquidity to stretch the faucet
-    const days = Math.max(1, Math.min(365, Number(closeTimeDays) || 14));
-    const closeTime = BigInt(Math.floor(Date.now() / 1000) + days * 86400);
+
+    // close time: exact timestamp (date-time picker) preferred; legacy closeTimeDays fallback
+    const nowSec = Math.floor(Date.now() / 1000);
+    let closeSec: number;
+    if (closeTimeTs != null) {
+      closeSec = Number(closeTimeTs);
+      if (!Number.isFinite(closeSec)) return reply.code(400).send({ error: "bad closeTimeTs" });
+      if (closeSec < nowSec + 30 * 60) return reply.code(400).send({ error: "close time must be at least 30 minutes from now" });
+      if (closeSec > nowSec + 365 * 86400) return reply.code(400).send({ error: "close time too far (max 1 year)" });
+    } else {
+      const days = Math.max(1, Math.min(365, Number(closeTimeDays) || 14));
+      closeSec = nowSec + days * 86400;
+    }
+    const closeTime = BigInt(closeSec);
+
+    // structured price market: deterministic Chainlink resolution, no LLM in the loop
+    let price: { asset: string; comparator: "above" | "below"; threshold: number } | null = null;
+    if (priceConfig && typeof priceConfig === "object") {
+      const asset = String(priceConfig.asset ?? "").toUpperCase();
+      const comparator = priceConfig.comparator === "below" ? "below" : "above";
+      const threshold = Number(priceConfig.threshold);
+      if (!config.onchainFeeds[asset] && !hasFeed(asset)) return reply.code(400).send({ error: `no price feed for ${asset || "?"} (ETH/BTC/LINK)` });
+      if (!(threshold > 0)) return reply.code(400).send({ error: "bad price threshold" });
+      price = { asset, comparator, threshold };
+    }
+    // custom (subjective) markets MUST state how they resolve — that text is what the AI
+    // oracle judges by and what challengers evaluate in the dispute window
+    const criteria = String(description ?? "").trim();
+    if (!price && criteria.length < 20) {
+      return reply.code(400).send({ error: "resolution criteria required for custom markets (min 20 chars): state how and from what source this resolves" });
+    }
+
     // country tags (e.g. ["US","GB"]) + restriction ride in the flexible metadata JSON — no schema change
     const countryTags = Array.isArray(countries) ? countries.map((c: any) => normCountry(c)).filter(Boolean).slice(0, 12) : [];
     const isRestricted = config.features.countryGate && !!restricted && countryTags.length > 0;
-    const metadataURI = JSON.stringify({ category: category || "general", description: description || "", image: image || "", countries: countryTags, restricted: isRestricted });
+    const L = toUsdc(0.5); // small initial liquidity to stretch the faucet (liquidity UX — pending product call)
+    const metadataURI = JSON.stringify({ category: category || "general", description: criteria, criteria, image: image || "", price, countries: countryTags, restricted: isRestricted });
     try {
       // create through MarketRegistry over the audited Gnosis stack (market address = FPMM)
       const target = config.registry!;

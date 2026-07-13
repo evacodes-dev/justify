@@ -29,8 +29,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // POST /api/create-market — deploys a real CTF/FPMM market (creator role required).
+export interface PriceConfig { asset: 'ETH' | 'BTC' | 'LINK'; comparator: 'above' | 'below'; threshold: number }
 export function createMarket(input: {
-  question: string; description?: string; category?: string; closeTimeDays?: number; creator?: string
+  question: string; description?: string; category?: string; closeTimeDays?: number;
+  closeTimeTs?: number; priceConfig?: PriceConfig; creator?: string
 }) {
   return apiFetch<{ address: string; question: string; id: number; explorer: string; deployTx: string }>(
     '/api/create-market',

@@ -119,8 +119,17 @@ export async function resolveMarket(marketId: number) {
   let reasoning = "";
   let oracle: "chainlink" | "claude" = "claude";
 
-  // 1) route
-  const cls = await classify(m.question);
+  // 1) route. Structured price markets (creator picked asset/comparator/threshold in the
+  // form) skip the LLM classifier entirely — fully deterministic routing.
+  let cls: Classification;
+  try {
+    const meta = JSON.parse(m.metadataURI || "{}");
+    cls = meta.price?.asset
+      ? { chainlinkResolvable: true, asset: String(meta.price.asset), comparator: meta.price.comparator === "below" ? "below" : "above", threshold: Number(meta.price.threshold) }
+      : await classify(m.question);
+  } catch {
+    cls = await classify(m.question);
+  }
   const asset = cls.asset?.toUpperCase();
   if (cls.chainlinkResolvable && asset && typeof cls.threshold === "number" && cls.comparator) {
     // 1a) PREFERRED: trustless on-chain resolution when a feed is configured on the settlement chain
