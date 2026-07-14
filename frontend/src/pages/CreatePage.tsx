@@ -94,7 +94,7 @@ export default function CreatePage() {
   }, [address])
 
   const closeDate = useMemo(() => (closeAt ? new Date(closeAt) : null), [closeAt])
-  const closeValid = !!closeDate && closeDate.getTime() > Date.now() + 30 * 60e3
+  const closeValid = !!closeDate && closeDate.getTime() > Date.now()
   // local-time hint for the creator; canonical en-US date inside the on-chain question
   // (the question text is what the oracle and challengers read — keep it unambiguous)
   const closeHuman = closeDate
@@ -316,7 +316,7 @@ export default function CreatePage() {
                     </div>
                   </div>
                   <p className={`small mb-3 ${closeValid ? 'text-muted' : 'text-warning'}`}>
-                    {closeValid ? `Closes ${closeHuman} (your local time)` : 'Close time must be at least 30 minutes from now.'}
+                    {closeValid ? `Closes ${closeHuman} (your local time)` : 'Close time must be in the future.'}
                   </p>
 
                   {createMode === 'self' && (
