@@ -37,8 +37,11 @@ export default function ProfilePage() {
             </>
           ) : (
             <div className="bg-glass rounded-4 shadow-sm p-4 text-center m-lg-3">
-              <p className="text-muted mb-3">No profile yet — verify with World ID to claim your name.</p>
-              <button className="btn btn-primary rounded-4 fw-bold" onClick={() => openModal('onboard')}>Get verified</button>
+              <p className="text-muted mb-3">No profile yet — set a name and bio to get started. Verifying with World ID is optional (adds the checkmark).</p>
+              <div className="d-flex gap-2 justify-content-center flex-wrap">
+                <Link to="/edit-profile" className="btn btn-primary rounded-4 fw-bold">Set up profile</Link>
+                <button className="btn btn-outline-primary rounded-4 fw-bold" onClick={() => openModal('onboard')}>Get verified</button>
+              </div>
             </div>
           )}
 

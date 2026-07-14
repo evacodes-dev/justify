@@ -316,20 +316,31 @@ export async function compatRoutes(app: FastifyInstance) {
     return { user: u ?? null };
   });
 
-  // update profile (settings)
+  // update profile (settings). Any signed-in wallet can have a profile — World ID is
+  // ONLY the checkmark + market-creation gate, not a requirement to set a name/bio.
+  // Upserts the user record (verified stays false until they actually verify).
   app.post<{ Body: any }>("/api/profile", async (req, reply) => {
     const { address, name, avatar, bio, country } = (req.body ?? {}) as any;
     if (!/^0x[a-fA-F0-9]{40}$/.test(address ?? "")) return reply.code(400).send({ error: "bad address" });
     // identity-asserting write: only the signed-in owner of this address may edit it
     if (!requireAuth(req, reply, address)) return;
-    const u = db.users.find((x) => x.address.toLowerCase() === address.toLowerCase());
-    if (!u) return reply.code(404).send({ error: "user not found (verify first)" });
-    const cleanName = name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : u.name;
-    if (cleanName !== u.name && db.users.find((x) => x.name === cleanName)) return reply.code(409).send({ error: "name taken" });
-    const cleanBio = bio != null ? String(bio).slice(0, 280) : u.bio;
-    const cleanAvatar = avatar != null ? String(avatar).slice(0, 2048) : u.avatar; // URL, not a data blob
-    db.users.patch(u.id, { name: cleanName, avatar: cleanAvatar, bio: cleanBio, country: country ? normCountry(country) : u.country });
-    return { ok: true, user: db.users.get(u.id) };
+    const addrLc = String(address).toLowerCase();
+    const u = db.users.find((x) => x.address.toLowerCase() === addrLc);
+    const cleanName = name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : u?.name ?? "";
+    // name uniqueness across everyone else
+    if (cleanName && db.users.find((x) => x.name === cleanName && x.address.toLowerCase() !== addrLc))
+      return reply.code(409).send({ error: "name taken" });
+    const cleanBio = bio != null ? String(bio).slice(0, 280) : u?.bio;
+    const cleanAvatar = avatar != null ? String(avatar).slice(0, 2048) : u?.avatar; // URL, not a data blob
+    db.users.put({
+      id: addrLc, address: address,
+      name: cleanName || u?.name || addrLc.slice(0, 8),
+      verified: u?.verified ?? false, creator: u?.creator, humanId: u?.humanId ?? addrLc,
+      avatar: cleanAvatar, bio: cleanBio,
+      country: country ? normCountry(country) : u?.country,
+      createdAt: u?.createdAt ?? Date.now(),
+    });
+    return { ok: true, user: db.users.get(addrLc) };
   });
 
   // create a market (backend is a registered creator; funds the initial liquidity)

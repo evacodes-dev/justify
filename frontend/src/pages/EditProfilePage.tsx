@@ -5,7 +5,8 @@ import { useToast } from '../components/common/Toast'
 import { getMe, updateProfile } from '../lib/api'
 
 // Settings — real profile backed by the backend (name + bio). No ENS; the name is
-// a backend display handle. Requires a verified user (created at onboarding).
+// a backend display handle. Open to any signed-in wallet — World ID is only the
+// verified checkmark, not a prerequisite for having a profile.
 export default function EditProfilePage() {
   const { address, isLoggedIn, promptLogin } = useWallet()
   const toast = useToast()
@@ -52,7 +53,11 @@ export default function EditProfilePage() {
             <div className="text-center py-5"><div className="spinner-border" role="status" /></div>
           ) : (
             <div className="bg-glass p-4 rounded-4 shadow-sm">
-              {!verified && <p className="text-warning small mb-3">Verify with World ID first to claim a name.</p>}
+              {!verified && (
+                <p className="text-muted small mb-3">
+                  Set your name and bio freely. Verifying with World ID adds the blue checkmark and unlocks market creation — it isn't required to have a profile.
+                </p>
+              )}
               <div className="form-floating mb-3">
                 <input className="form-control rounded-4 bg-glass" id="pn" value={name}
                   onChange={(e) => setName(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} placeholder="name" />
@@ -67,7 +72,7 @@ export default function EditProfilePage() {
                 <label className="text-muted small d-block mb-1">WALLET</label>
                 <code className="text-body small">{address}</code>
               </div>
-              <button className="btn btn-primary rounded-5 w-100 py-3 fw-bold text-uppercase" disabled={saving || !verified} onClick={save}>
+              <button className="btn btn-primary rounded-5 w-100 py-3 fw-bold text-uppercase" disabled={saving || !name} onClick={save}>
                 {saving ? 'Saving…' : 'Save profile'}
               </button>
             </div>
