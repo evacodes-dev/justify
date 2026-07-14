@@ -80,6 +80,15 @@ export const config = {
   // shared secret for /api/admin/* (x-admin-secret header). Unset = admin API disabled.
   adminSecret: process.env.ADMIN_SECRET ?? "",
 
+  // Dynamic environment id — used to verify session JWTs on identity writes.
+  dynamicEnvId: process.env.DYNAMIC_ENV_ID ?? process.env.VITE_DYNAMIC_ENVIRONMENT_ID ?? "",
+
+  // Product economics (beta): platform funds initial liquidity; bets are capped; each
+  // creator may open a limited number of markets. All env-tunable, instantly reversible.
+  initialLiquidityUsdc: Number(process.env.INITIAL_LIQUIDITY_USDC ?? 1000),
+  maxBetUsdc: Number(process.env.MAX_BET_USDC ?? 50),
+  maxMarketsPerCreator: Number(process.env.MAX_MARKETS_PER_CREATOR ?? 3),
+
   // Market creation mode: 'backend' = backend signs & funds (current default);
   // 'self' = the creator signs registry.createMarket from their own wallet and funds the
   // initial liquidity themselves. Flip via env + restart — instantly reversible.

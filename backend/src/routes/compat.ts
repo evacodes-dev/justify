@@ -230,7 +230,8 @@ export async function compatRoutes(app: FastifyInstance) {
   // creators (real users) for the feed / people lists
   app.get("/api/creators", async () => {
     const { followersOf } = await import("./social.js");
-    const users = db.users.all();
+    // only real creator-role holders belong in the Creators list (not every verified user)
+    const users = db.users.filter((u) => !!u.creator);
     return {
       creators: users.map((u) => ({
         id: u.address.toLowerCase(), name: u.name, handle: "@" + u.name, address: u.address,
@@ -323,7 +324,7 @@ export async function compatRoutes(app: FastifyInstance) {
     const { address, name, avatar, bio, country } = (req.body ?? {}) as any;
     if (!/^0x[a-fA-F0-9]{40}$/.test(address ?? "")) return reply.code(400).send({ error: "bad address" });
     // identity-asserting write: only the signed-in owner of this address may edit it
-    if (!requireAuth(req, reply, address)) return;
+    if (!(await requireAuth(req, reply, address))) return;
     const addrLc = String(address).toLowerCase();
     const u = db.users.find((x) => x.address.toLowerCase() === addrLc);
     const cleanName = name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : u?.name ?? "";
@@ -357,6 +358,11 @@ export async function compatRoutes(app: FastifyInstance) {
       const cu = db.users.find((x) => x.address.toLowerCase() === String(creator ?? "").toLowerCase());
       if (!cu?.creator) return reply.code(403).send({ error: "creator role required (granted by admin)" });
     }
+    // per-creator market cap (beta): a creator may open only N markets
+    const creatorLc = String(creator ?? "").toLowerCase();
+    const mine = Object.values(submitters()).filter((a) => a.toLowerCase() === creatorLc).length;
+    if (creatorLc && mine >= config.maxMarketsPerCreator)
+      return reply.code(403).send({ error: `market limit reached (${config.maxMarketsPerCreator} per creator)` });
 
     // close time: exact timestamp (date-time picker) preferred; legacy closeTimeDays fallback
     const nowSec = Math.floor(Date.now() / 1000);
@@ -364,7 +370,7 @@ export async function compatRoutes(app: FastifyInstance) {
     if (closeTimeTs != null) {
       closeSec = Number(closeTimeTs);
       if (!Number.isFinite(closeSec)) return reply.code(400).send({ error: "bad closeTimeTs" });
-      if (closeSec < nowSec + 30 * 60) return reply.code(400).send({ error: "close time must be at least 30 minutes from now" });
+      if (closeSec <= nowSec) return reply.code(400).send({ error: "close time must be in the future" });
       if (closeSec > nowSec + 365 * 86400) return reply.code(400).send({ error: "close time too far (max 1 year)" });
     } else {
       const days = Math.max(1, Math.min(365, Number(closeTimeDays) || 14));
@@ -392,7 +398,7 @@ export async function compatRoutes(app: FastifyInstance) {
     // country tags (e.g. ["US","GB"]) + restriction ride in the flexible metadata JSON — no schema change
     const countryTags = Array.isArray(countries) ? countries.map((c: any) => normCountry(c)).filter(Boolean).slice(0, 12) : [];
     const isRestricted = config.features.countryGate && !!restricted && countryTags.length > 0;
-    const L = toUsdc(0.5); // small initial liquidity to stretch the faucet (liquidity UX — pending product call)
+    const L = toUsdc(config.initialLiquidityUsdc); // platform-funded initial liquidity ($1000 beta default)
     const metadataURI = JSON.stringify({ category: category || "general", description: criteria, criteria, image: image || "", price, countries: countryTags, restricted: isRestricted });
     try {
       // create through MarketRegistry over the audited Gnosis stack (market address = FPMM)

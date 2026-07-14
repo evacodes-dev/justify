@@ -12,7 +12,7 @@ export class ApiUnavailableError extends Error {
   }
 }
 
-import { ensureAuthToken, authHeaders } from './auth'
+import { authHeaders } from './auth'
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
@@ -30,9 +30,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
-// Identity-asserting writes: get (or mint, one wallet signature) the session token first.
+// Identity-asserting writes: attach the Dynamic session JWT (no signing popup).
 async function authedFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  await ensureAuthToken() // throws with a friendly message if the user rejects the signature
   return apiFetch<T>(path, { ...init, headers: { ...authHeaders(), ...(init?.headers ?? {}) } })
 }
 

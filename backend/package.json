@@ -17,6 +17,7 @@
     "@worldcoin/idkit-core": "^4.1.8",
     "dotenv": "^16.4.5",
     "fastify": "^5.1.0",
+    "jose": "^6.2.3",
     "p-queue": "^8.0.1",
     "pg": "^8.22.0",
     "viem": "^2.21.45"

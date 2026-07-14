@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import RightSidebar from '../components/layout/RightSidebar'
 import MarketCard from '../components/market/MarketCard'
 import { useWallet } from '../hooks/useWallet'
-import { createMarket, getMe, submitCreatorRequest, getCreatorRequestStatus, type PriceConfig } from '../lib/api'
+import { createMarket, getMe, type PriceConfig } from '../lib/api'
 import { apiMarketToDemo, ensureConfig, toUiMarket, type ApiMarket } from '../lib/markets'
 import { createMarketSelf } from '../lib/arc'
 
@@ -36,29 +36,6 @@ function parseThreshold(raw: string): number {
 // and CUSTOM (free question + required resolution criteria -> AI + challenge window).
 export default function CreatePage() {
   const { address, isLoggedIn, promptLogin, getChainWalletClient } = useWallet()
-
-  // creator application (non-creators): текст заявки + статус из бэкенда
-  const [reqText, setReqText] = useState('')
-  const [reqStatus, setReqStatus] = useState<'none' | 'pending' | 'approved' | 'dismissed' | null>(null)
-  const [reqBusy, setReqBusy] = useState(false)
-  const [reqErr, setReqErr] = useState('')
-  useEffect(() => {
-    if (!address) { setReqStatus(null); return }
-    getCreatorRequestStatus(address).then((b) => setReqStatus(b.status)).catch(() => setReqStatus('none'))
-  }, [address])
-  const sendRequest = async () => {
-    if (!address || reqText.trim().length < 10) return
-    setReqBusy(true); setReqErr('')
-    try {
-      await submitCreatorRequest(address, reqText.trim())
-      setReqStatus('pending')
-      setReqText('')
-    } catch (e) {
-      setReqErr((e as Error).message || 'Could not send the request')
-    } finally {
-      setReqBusy(false)
-    }
-  }
   const [creator, setCreator] = useState<boolean | null>(null) // null = still loading
   const [myName, setMyName] = useState('')
   // 'self' = the creator signs createMarket from their wallet and funds the liquidity;
@@ -184,41 +161,10 @@ export default function CreatePage() {
           ) : creator === null ? (
             <div className="text-center py-5"><div className="spinner-border" role="status" /></div>
           ) : !creator ? (
-            <div className="bg-glass p-4 rounded-4">
-              <div className="text-center">
-                <span className="material-icons text-primary mb-2" style={{ fontSize: 44 }}>workspace_premium</span>
-                <p className="text-body fw-bold mb-1">Market creation is available to creators</p>
-                <p className="text-muted small mb-3">
-                  Creating markets is a curated role granted by the Justify team.
-                </p>
-              </div>
-              {reqStatus === 'pending' ? (
-                <div className="text-center">
-                  <span className="badge bg-warning text-dark mb-2">Request pending</span>
-                  <p className="text-muted small mb-0">Your application is in — the team will review it soon.</p>
-                </div>
-              ) : (
-                <>
-                  <p className="text-body small fw-bold mb-2">Apply to become a creator</p>
-                  <textarea
-                    className="form-control bg-transparent text-body border-secondary rounded-3 mb-2"
-                    rows={3}
-                    maxLength={1000}
-                    placeholder="What markets would you run? Tell us about your topic, audience or expertise (min 10 chars)."
-                    value={reqText}
-                    onChange={(e) => setReqText(e.target.value)}
-                    disabled={reqBusy}
-                  />
-                  {reqErr && <p className="text-danger small mb-2">{reqErr}</p>}
-                  <button
-                    className="btn btn-primary rounded-4 w-100 fw-bold"
-                    disabled={reqBusy || reqText.trim().length < 10}
-                    onClick={sendRequest}
-                  >
-                    {reqBusy ? 'Sending…' : 'Request creator access'}
-                  </button>
-                </>
-              )}
+            <div className="bg-glass p-4 rounded-4 text-center">
+              <span className="material-icons text-primary mb-2" style={{ fontSize: 44 }}>workspace_premium</span>
+              <p className="text-body fw-bold mb-1">Market creation is available to creators</p>
+              <p className="text-muted small mb-0">Creating markets is a curated role granted by the Justify team.</p>
             </div>
           ) : (
             <div className="feeds">

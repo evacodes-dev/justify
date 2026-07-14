@@ -47,6 +47,9 @@ const configPayload = async () => ({
   usdcDecimals: config.usdcDecimals,
   approvalThresholdUsdc: config.approvalThresholdUsdc,
   createMode: config.createMode,
+  maxBetUsdc: config.maxBetUsdc,
+  initialLiquidityUsdc: config.initialLiquidityUsdc,
+  maxMarketsPerCreator: config.maxMarketsPerCreator,
 });
 app.get("/config", configPayload);
 app.get("/api/config", configPayload); // /api/* alias — prod nginx only proxies /api

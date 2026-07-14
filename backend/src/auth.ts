@@ -1,41 +1,32 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { publicClient } from "./chain.js";
+import { createRemoteJWKSet, jwtVerify } from "jose";
+import { config } from "./config.js";
 
-// EIP-191 session auth. The wallet signs ONE login message; we hand back an HMAC
-// token (address + expiry). Every identity-asserting write then requires the token —
-// the acting address comes from the token, never from the request body, so nobody
-// can like/comment/post/edit-profile as somebody else's address.
+// Auth = Dynamic session JWT. The user logs in once with Dynamic (email/social/wallet);
+// Dynamic issues a signed JWT that proves which wallet they control. The SPA attaches it
+// as `x-auth-token` on every identity write; here we verify it against Dynamic's public
+// keys (JWKS) and read the wallet address out of it. No per-action message signing.
 
-// AUTH_SECRET should be set in prod; the random fallback just means tokens don't
-// survive a restart (users transparently re-sign).
-const SECRET = process.env.AUTH_SECRET || process.env.ADMIN_SECRET || randomBytes(32).toString("hex");
-const TOKEN_TTL_MS = 30 * 86_400_000; // 30 days
-const LOGIN_FRESHNESS_MS = 10 * 60_000;
+const envId = config.dynamicEnvId;
+// Dynamic publishes rotating public keys here; createRemoteJWKSet caches + refreshes them.
+const JWKS = envId
+  ? createRemoteJWKSet(new URL(`https://app.dynamic.xyz/api/v0/sdk/${envId}/.well-known/jwks`))
+  : null;
 
-export const loginMessage = (address: string, ts: number) =>
-  `Justify sign-in\naddress: ${address.toLowerCase()}\nts: ${ts}`;
-
-const mac = (payload: string) => createHmac("sha256", SECRET).update(payload).digest("base64url");
-
-export function issueToken(address: string): string {
-  const payload = Buffer.from(
-    JSON.stringify({ a: address.toLowerCase(), exp: Date.now() + TOKEN_TTL_MS }),
-  ).toString("base64url");
-  return `${payload}.${mac(payload)}`;
+// Extract the primary blockchain wallet address from a verified Dynamic JWT payload.
+function addressFromClaims(payload: any): string | null {
+  const creds = Array.isArray(payload?.verified_credentials) ? payload.verified_credentials : [];
+  const chain = creds.find((c: any) => (c?.format === "blockchain" || c?.chain) && typeof c?.address === "string");
+  const addr = chain?.address ?? creds.find((c: any) => typeof c?.address === "string")?.address;
+  return typeof addr === "string" && /^0x[a-fA-F0-9]{40}$/.test(addr) ? addr.toLowerCase() : null;
 }
 
-export function verifyToken(token: string | undefined): string | null {
-  if (!token) return null;
-  const [payload, sig] = token.split(".");
-  if (!payload || !sig) return null;
-  const expect = Buffer.from(mac(payload));
-  const got = Buffer.from(sig);
-  if (got.length !== expect.length || !timingSafeEqual(got, expect)) return null;
+/// Verified lowercase wallet address from the Dynamic JWT, or null.
+export async function verifyDynamicJwt(token: string | undefined): Promise<string | null> {
+  if (!token || !JWKS) return null;
   try {
-    const { a, exp } = JSON.parse(Buffer.from(payload, "base64url").toString());
-    if (typeof a !== "string" || Date.now() > Number(exp)) return null;
-    return a;
+    const { payload } = await jwtVerify(token, JWKS);
+    return addressFromClaims(payload);
   } catch {
     return null;
   }
@@ -43,10 +34,14 @@ export function verifyToken(token: string | undefined): string | null {
 
 /// Authenticated lowercase address for this request, or null after sending 401/403.
 /// When the body also claims an address, it must match the token's.
-export function requireAuth(req: FastifyRequest, reply: FastifyReply, claimed?: string): string | null {
-  const addr = verifyToken(req.headers["x-auth-token"] as string | undefined);
+export async function requireAuth(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  claimed?: string,
+): Promise<string | null> {
+  const addr = await verifyDynamicJwt(req.headers["x-auth-token"] as string | undefined);
   if (!addr) {
-    reply.code(401).send({ error: "auth required — sign the login message first" });
+    reply.code(401).send({ error: "sign in to continue" });
     return null;
   }
   if (claimed && claimed.toLowerCase() !== addr) {
@@ -54,18 +49,4 @@ export function requireAuth(req: FastifyRequest, reply: FastifyReply, claimed?: 
     return null;
   }
   return addr;
-}
-
-/// Verifies the EIP-191 login signature (ERC-1271 fallback for smart wallets via RPC).
-export async function verifyLoginSignature(
-  address: `0x${string}`,
-  ts: number,
-  signature: `0x${string}`,
-): Promise<boolean> {
-  if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > LOGIN_FRESHNESS_MS) return false;
-  try {
-    return await publicClient.verifyMessage({ address, message: loginMessage(address, ts), signature });
-  } catch {
-    return false;
-  }
 }

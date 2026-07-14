@@ -1,11 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { db, kv } from "../store.js";
-import { requireAuth, issueToken, verifyLoginSignature } from "../auth.js";
+import { requireAuth } from "../auth.js";
 
 // social write throttles (per IP, on top of the global limiter)
 const writeLimit = { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } };
-const authLimit = { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } };
 
 // Product social layer: likes + comments on markets + follower graph for creators, with an
 // unfollow confirmation handled client-side. kv-backed (durable once Postgres is on).
@@ -60,20 +59,14 @@ function resolveUser(key: string): string | undefined {
 }
 
 export async function socialRoutes(app: FastifyInstance) {
-  // ── auth: one EIP-191 signature per session → 30-day token for identity writes ──
-  app.post<{ Body: any }>("/api/auth", authLimit, async (req, reply) => {
-    const { address, ts, signature } = (req.body ?? {}) as { address?: string; ts?: number; signature?: string };
-    if (!isAddr(address) || !signature) return reply.code(400).send({ error: "address + signature required" });
-    const ok = await verifyLoginSignature(address as `0x${string}`, Number(ts), signature as `0x${string}`);
-    if (!ok) return reply.code(401).send({ error: "bad signature" });
-    return { token: issueToken(address!) };
-  });
+  // Identity writes below authenticate via the Dynamic session JWT (x-auth-token header),
+  // verified in requireAuth — no per-action message signing.
 
   // ── likes ──
   app.post<{ Body: any }>("/api/like", writeLimit, async (req, reply) => {
     const { address, marketId } = (req.body ?? {}) as { address?: string; marketId?: number | string };
     if (!isAddr(address)) return reply.code(400).send({ error: "address" });
-    if (!requireAuth(req, reply, address)) return;
+    if (!(await requireAuth(req, reply, address))) return;
     if (marketId == null || !db.markets.get(Number(marketId))) return reply.code(404).send({ error: "market" });
     const all = kv.get<LikesMap>("likes", {});
     const key = String(marketId);
@@ -99,7 +92,7 @@ export async function socialRoutes(app: FastifyInstance) {
   app.post<{ Body: any }>("/api/comment", writeLimit, async (req, reply) => {
     const { address, marketId, text } = (req.body ?? {}) as { address?: string; marketId?: number | string; text?: string };
     if (!isAddr(address)) return reply.code(400).send({ error: "address" });
-    if (!requireAuth(req, reply, address)) return;
+    if (!(await requireAuth(req, reply, address))) return;
     if (marketId == null || !db.markets.get(Number(marketId))) return reply.code(404).send({ error: "market" });
     const t = String(text ?? "").trim();
     if (t.length < 1 || t.length > 500) return reply.code(400).send({ error: "text must be 1..500 chars" });
@@ -134,7 +127,7 @@ export async function socialRoutes(app: FastifyInstance) {
   app.post<{ Body: any }>("/api/post", writeLimit, async (req, reply) => {
     const { address, text } = (req.body ?? {}) as { address?: string; text?: string };
     if (!isAddr(address)) return reply.code(400).send({ error: "address" });
-    if (!requireAuth(req, reply, address)) return;
+    if (!(await requireAuth(req, reply, address))) return;
     const t = String(text ?? "").trim();
     if (t.length < 1 || t.length > 500) return reply.code(400).send({ error: "text must be 1..500 chars" });
     const posts = kv.get<PostRow[]>("posts", []);
@@ -175,7 +168,7 @@ export async function socialRoutes(app: FastifyInstance) {
   app.post<{ Body: any }>("/api/post-like", writeLimit, async (req, reply) => {
     const { address, postId } = (req.body ?? {}) as { address?: string; postId?: string };
     if (!isAddr(address)) return reply.code(400).send({ error: "address" });
-    if (!requireAuth(req, reply, address)) return;
+    if (!(await requireAuth(req, reply, address))) return;
     const id = String(postId ?? "");
     if (!kv.get<PostRow[]>("posts", []).some((p) => p.id === id)) return reply.code(404).send({ error: "post" });
     const all = kv.get<PostLikesMap>("postLikes", {});
@@ -191,7 +184,7 @@ export async function socialRoutes(app: FastifyInstance) {
   app.post<{ Body: any }>("/api/post-comment", writeLimit, async (req, reply) => {
     const { address, postId, text } = (req.body ?? {}) as { address?: string; postId?: string; text?: string };
     if (!isAddr(address)) return reply.code(400).send({ error: "address" });
-    if (!requireAuth(req, reply, address)) return;
+    if (!(await requireAuth(req, reply, address))) return;
     const id = String(postId ?? "");
     if (!kv.get<PostRow[]>("posts", []).some((p) => p.id === id)) return reply.code(404).send({ error: "post" });
     const t = String(text ?? "").trim();
@@ -236,7 +229,7 @@ export async function socialRoutes(app: FastifyInstance) {
   app.post<{ Body: any }>("/api/creator-request", writeLimit, async (req, reply) => {
     const { address, text } = (req.body ?? {}) as { address?: string; text?: string };
     if (!isAddr(address)) return reply.code(400).send({ error: "address" });
-    if (!requireAuth(req, reply, address)) return;
+    if (!(await requireAuth(req, reply, address))) return;
     const t = String(text ?? "").trim();
     if (t.length < 10 || t.length > 1000) return reply.code(400).send({ error: "tell us a bit more (10..1000 chars)" });
     const a = address!.toLowerCase();
@@ -261,7 +254,7 @@ export async function socialRoutes(app: FastifyInstance) {
   app.post<{ Body: any }>("/api/follow", writeLimit, async (req, reply) => {
     const { follower, target } = (req.body ?? {}) as { follower?: string; target?: string };
     if (!isAddr(follower)) return reply.code(400).send({ error: "follower" });
-    if (!requireAuth(req, reply, follower)) return;
+    if (!(await requireAuth(req, reply, follower))) return;
     const t = resolveUser(String(target ?? ""));
     if (!t) return reply.code(404).send({ error: "target not found" });
     if (t === follower!.toLowerCase()) return reply.code(400).send({ error: "cannot follow yourself" });

@@ -13,6 +13,9 @@ export interface ChainConfig {
   usdc: `0x${string}`
   usdcDecimals: number
   createMode?: 'self' | 'backend'
+  maxBetUsdc?: number
+  initialLiquidityUsdc?: number
+  maxMarketsPerCreator?: number
 }
 
 export const CHAIN: ChainConfig = {

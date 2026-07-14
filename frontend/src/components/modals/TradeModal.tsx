@@ -5,6 +5,7 @@ import { useUi } from '../layout/UiContext'
 import { useWallet } from '../../hooks/useWallet'
 import { useToast } from '../common/Toast'
 import { buyShares, sellShares, quoteBuy, quoteSell, usdcBalance, txUrl } from '../../lib/arc'
+import { CHAIN } from '../../lib/markets'
 
 // Trade modal over the Gnosis FPMM. Buy: USDC in → outcome shares (2% slippage
 // guard via calcBuyAmount). Sell: USDC out ← shares burned (calcSellAmount).
@@ -41,6 +42,9 @@ export default function TradeModal() {
     usdcBalance(address).then(setBalance).catch(() => {})
   }, [tradeTarget, address])
   const insufficient = mode === 'buy' && balance != null && a > balance
+  // per-market bet cap (beta): platform limits single-buy size
+  const maxBet = CHAIN.maxBetUsdc ?? 0
+  const overCap = mode === 'buy' && maxBet > 0 && a > maxBet
 
   // Live on-chain quote (debounced) — the source of truth for the preview.
   useEffect(() => {
@@ -148,6 +152,12 @@ export default function TradeModal() {
         </label>
       </div>
 
+      {mode === 'buy' && maxBet > 0 && (
+        <div className={`small mb-2 ${overCap ? 'text-danger' : 'text-muted'}`}>
+          Max bet ${maxBet.toFixed(0)} per trade{overCap ? ' — lower the amount' : ''}
+        </div>
+      )}
+
       {isLoggedIn && balance != null && (
         <div className={`small mb-3 d-flex justify-content-between ${insufficient ? 'text-danger' : 'text-muted'}`}>
           <span>Wallet balance: ${balance.toFixed(2)} USDC</span>
@@ -189,15 +199,17 @@ export default function TradeModal() {
 
       <button
         className="btn btn-primary rounded-5 w-100 py-3 fw-bold text-uppercase"
-        disabled={phase === 'signing' || !(a > 0) || insufficient}
+        disabled={phase === 'signing' || !(a > 0) || insufficient || overCap}
         onClick={confirm}
       >
         {phase === 'signing'
           ? (mode === 'buy' ? 'Signing approve + buy…' : 'Signing approve + sell…')
           : !isLoggedIn
             ? 'Connect wallet to trade'
-            : insufficient
-              ? 'Insufficient USDC balance'
+            : overCap
+              ? `Max $${maxBet.toFixed(0)} per bet`
+              : insufficient
+                ? 'Insufficient USDC balance'
               : mode === 'buy'
                 ? `Approve + Buy ${side === 1 ? 'YES' : 'NO'}`
                 : `Approve + Sell ${side === 1 ? 'YES' : 'NO'}`}
