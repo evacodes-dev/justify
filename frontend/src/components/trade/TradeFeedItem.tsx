@@ -111,9 +111,11 @@ export default function TradeFeedItem({ market, live }: { market: TradeMarket; l
           <div className={market.innerClassName}>
             <div className="w-100">
               <div className="d-flex align-items-center justify-content-between">
-                <Link to="/profile" className="text-decoration-none d-flex align-items-center">
+                <Link to={`/${author.name}`} className="text-decoration-none d-flex align-items-center">
                   <h6 className="fw-bold mb-0 text-body">{author.name}</h6>
-                  <span className="ms-2 material-icons bg-primary p-0 md-16 fw-bold text-white rounded-circle ov-icon">done</span>
+                  {author.verified && (
+                    <span className="ms-2 material-icons bg-primary p-0 md-16 fw-bold text-white rounded-circle ov-icon">done</span>
+                  )}
                   <small className="text-muted ms-2">{author.handle}</small>
                 </Link>
                 <div className="d-flex align-items-center small">

@@ -89,6 +89,10 @@ async function scan() {
     for (const log of logs) {
       const m = markets.find((x) => x.address.toLowerCase() === (log.address as string).toLowerCase());
       if (!m) continue;
+      // Re-scans happen whenever a later call in this scan() fails before the cursor is
+      // saved. The trade row itself is idempotent (keyed by tx:logIndex) but the volume /
+      // position / feed side effects are additive — skip logs we already ingested.
+      if (db.trades.get((log as any).transactionHash + ":" + (log as any).logIndex)) continue;
       const a = (log as any).args;
       const isBuy = (log as any).eventName === "FPMMBuy";
       const user = getAddress(isBuy ? a.buyer : a.seller);

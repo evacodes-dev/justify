@@ -12,6 +12,8 @@ export class ApiUnavailableError extends Error {
   }
 }
 
+import { ensureAuthToken, authHeaders } from './auth'
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
@@ -26,6 +28,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((body as any)?.error ?? `${path} failed (${res.status})`)
   return body as T
+}
+
+// Identity-asserting writes: get (or mint, one wallet signature) the session token first.
+async function authedFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  await ensureAuthToken() // throws with a friendly message if the user rejects the signature
+  return apiFetch<T>(path, { ...init, headers: { ...authHeaders(), ...(init?.headers ?? {}) } })
 }
 
 // POST /api/create-market — deploys a real CTF/FPMM market (creator role required).
@@ -48,7 +56,7 @@ export interface UserPost {
 export interface Mention extends UserPost { kind: 'post' | 'comment'; marketId?: number }
 
 export function createPost(input: { address: string; text: string }) {
-  return apiFetch<{ ok: boolean; post: UserPost }>('/api/post', { method: 'POST', body: JSON.stringify(input) })
+  return authedFetch<{ ok: boolean; post: UserPost }>('/api/post', { method: 'POST', body: JSON.stringify(input) })
 }
 export function getPosts(author?: string, limit = 30, viewer?: string) {
   const q = new URLSearchParams()
@@ -58,13 +66,13 @@ export function getPosts(author?: string, limit = 30, viewer?: string) {
   return apiFetch<{ posts: UserPost[] }>(`/api/posts?${q}`)
 }
 export function togglePostLike(address: string, postId: string) {
-  return apiFetch<{ liked: boolean; count: number }>('/api/post-like', { method: 'POST', body: JSON.stringify({ address, postId }) })
+  return authedFetch<{ liked: boolean; count: number }>('/api/post-like', { method: 'POST', body: JSON.stringify({ address, postId }) })
 }
 export function getPostComments(postId: string) {
   return apiFetch<{ comments: MarketComment[] }>(`/api/post-comments/${postId}`)
 }
 export function postPostComment(input: { address: string; postId: string; text: string }) {
-  return apiFetch<{ ok: boolean; count: number; comment: MarketComment }>('/api/post-comment', { method: 'POST', body: JSON.stringify(input) })
+  return authedFetch<{ ok: boolean; count: number; comment: MarketComment }>('/api/post-comment', { method: 'POST', body: JSON.stringify(input) })
 }
 export function getLikedMarketIds(address: string) {
   return apiFetch<{ marketIds: number[] }>(`/api/liked/${address}`)
@@ -76,7 +84,7 @@ export function getComments(marketId: number | string) {
   return apiFetch<{ comments: MarketComment[] }>(`/api/comments/${marketId}`)
 }
 export function postComment(input: { address: string; marketId: number | string; text: string }) {
-  return apiFetch<{ ok: boolean; count: number }>('/api/comment', { method: 'POST', body: JSON.stringify(input) })
+  return authedFetch<{ ok: boolean; count: number }>('/api/comment', { method: 'POST', body: JSON.stringify(input) })
 }
 
 export interface ChainlinkPrice { asset: string; price: number; feed: string; updatedAt: number; network: string; explorer: string }
@@ -104,7 +112,7 @@ export function getMe(address: string) {
   return apiFetch<{ user: { name: string; address: string; bio?: string; avatar?: string; verified: boolean; creator?: boolean } | null }>(`/api/me?address=${address}`)
 }
 export function updateProfile(input: { address: string; name?: string; bio?: string; avatar?: string }) {
-  return apiFetch<{ ok: boolean; user: any }>('/api/profile', { method: 'POST', body: JSON.stringify(input) })
+  return authedFetch<{ ok: boolean; user: any }>('/api/profile', { method: 'POST', body: JSON.stringify(input) })
 }
 
 // POST /api/dotation — funds a freshly-logged-in embedded wallet with gas money.
@@ -117,7 +125,7 @@ export function dotation(address: string) {
 
 // ---- Likes (markets) ----
 export function toggleLike(address: string, marketId: number | string) {
-  return apiFetch<{ liked: boolean; count: number }>('/api/like', {
+  return authedFetch<{ liked: boolean; count: number }>('/api/like', {
     method: 'POST',
     body: JSON.stringify({ address, marketId }),
   })
@@ -128,7 +136,7 @@ export function getLikes(marketId: number | string, address?: string) {
 
 // ---- Follows (subscribe to creators; `target` is a name OR an address) ----
 export function toggleFollow(follower: string, target: string) {
-  return apiFetch<{ following: boolean; followers: number }>('/api/follow', {
+  return authedFetch<{ following: boolean; followers: number }>('/api/follow', {
     method: 'POST',
     body: JSON.stringify({ follower, target }),
   })
@@ -155,6 +163,25 @@ export interface ActivityItem {
 }
 export function getActivityFeed() {
   return apiFetch<{ feed: ActivityItem[] }>('/api/feed')
+}
+
+// ---- Creator requests (apply on /create; reviewed on /admin) ----
+export function submitCreatorRequest(address: string, text: string) {
+  return authedFetch<{ ok: boolean; status: string }>('/api/creator-request', {
+    method: 'POST', body: JSON.stringify({ address, text }),
+  })
+}
+export function getCreatorRequestStatus(address: string) {
+  return apiFetch<{ status: 'none' | 'pending' | 'approved' | 'dismissed' }>(`/api/creator-request/${address}`)
+}
+export interface AdminCreatorRequest { id: string; address: string; text: string; ts: number; status: string; name: string | null; verified: boolean }
+export function adminListCreatorRequests(secret: string) {
+  return apiFetch<{ requests: AdminCreatorRequest[] }>('/api/admin/creator-requests', { headers: { 'x-admin-secret': secret } })
+}
+export function adminDismissCreatorRequest(secret: string, id: string) {
+  return apiFetch<{ ok: boolean }>('/api/admin/creator-request', {
+    method: 'POST', headers: { 'x-admin-secret': secret }, body: JSON.stringify({ id, action: 'dismiss' }),
+  })
 }
 
 // ---- Admin (hidden /admin page; shared secret in the x-admin-secret header) ----

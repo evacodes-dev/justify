@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import Modal from 'react-bootstrap/Modal'
+import { Link } from 'react-router-dom'
 import { useUi } from '../layout/UiContext'
 import { useWallet } from '../../hooks/useWallet'
 import { useToast } from '../common/Toast'
-import { buyShares, sellShares, quoteBuy, quoteSell, txUrl } from '../../lib/arc'
+import { buyShares, sellShares, quoteBuy, quoteSell, usdcBalance, txUrl } from '../../lib/arc'
 
 // Trade modal over the Gnosis FPMM. Buy: USDC in → outcome shares (2% slippage
 // guard via calcBuyAmount). Sell: USDC out ← shares burned (calcSellAmount).
 export default function TradeModal() {
   const { activeModal, closeModal, tradeTarget } = useUi()
-  const { isLoggedIn, promptLogin, getChainWalletClient } = useWallet()
+  const { address, isLoggedIn, promptLogin, getChainWalletClient } = useWallet()
   const toast = useToast()
 
   const [side, setSide] = useState<0 | 1>(1)
@@ -17,6 +18,7 @@ export default function TradeModal() {
   const [amount, setAmount] = useState('0.5')
   const [phase, setPhase] = useState<'idle' | 'signing'>('idle')
   const [quote, setQuote] = useState<number | null>(null) // buy: shares out; sell: shares to burn
+  const [balance, setBalance] = useState<number | null>(null)
 
   // Sync with whatever button opened the modal.
   useEffect(() => {
@@ -31,6 +33,14 @@ export default function TradeModal() {
 
   const fpmm = tradeTarget?.market.address
   const a = parseFloat(amount)
+
+  // wallet USDC balance — block buys that would only revert on-chain
+  useEffect(() => {
+    setBalance(null)
+    if (!tradeTarget || !address) return
+    usdcBalance(address).then(setBalance).catch(() => {})
+  }, [tradeTarget, address])
+  const insufficient = mode === 'buy' && balance != null && a > balance
 
   // Live on-chain quote (debounced) — the source of truth for the preview.
   useEffect(() => {
@@ -138,6 +148,13 @@ export default function TradeModal() {
         </label>
       </div>
 
+      {isLoggedIn && balance != null && (
+        <div className={`small mb-3 d-flex justify-content-between ${insufficient ? 'text-danger' : 'text-muted'}`}>
+          <span>Wallet balance: ${balance.toFixed(2)} USDC</span>
+          {insufficient && <Link to="/deposit" className="text-primary text-decoration-none" onClick={closeModal}>Deposit USDC</Link>}
+        </div>
+      )}
+
       <div className="bg-glass rounded-4 p-3 mb-3 small">
         <div className="d-flex justify-content-between mb-1">
           <span className="text-muted">{mode === 'buy' ? 'Est. shares' : 'Shares to sell (max)'}</span>
@@ -172,16 +189,18 @@ export default function TradeModal() {
 
       <button
         className="btn btn-primary rounded-5 w-100 py-3 fw-bold text-uppercase"
-        disabled={phase === 'signing' || !(a > 0)}
+        disabled={phase === 'signing' || !(a > 0) || insufficient}
         onClick={confirm}
       >
         {phase === 'signing'
           ? (mode === 'buy' ? 'Signing approve + buy…' : 'Signing approve + sell…')
-          : isLoggedIn
-            ? mode === 'buy'
-              ? `Approve + Buy ${side === 1 ? 'YES' : 'NO'}`
-              : `Approve + Sell ${side === 1 ? 'YES' : 'NO'}`
-            : 'Connect wallet to trade'}
+          : !isLoggedIn
+            ? 'Connect wallet to trade'
+            : insufficient
+              ? 'Insufficient USDC balance'
+              : mode === 'buy'
+                ? `Approve + Buy ${side === 1 ? 'YES' : 'NO'}`
+                : `Approve + Sell ${side === 1 ? 'YES' : 'NO'}`}
       </button>
     </Modal>
   )

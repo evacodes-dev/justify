@@ -4,7 +4,7 @@ import { IDKitRequestWidget, orbLegacy, type RpContext } from '@worldcoin/idkit'
 import { useUi } from '../layout/UiContext'
 import { useWallet } from '../../hooks/useWallet'
 import { useToast } from '../common/Toast'
-import { verifyStatus, submitProof } from '../../lib/api'
+import { verifyStatus, submitProof, getUser, updateProfile } from '../../lib/api'
 
 const WORLD_APP_ID = import.meta.env.VITE_WORLD_APP_ID as `app_${string}`
 const WORLD_RP_ID = import.meta.env.VITE_WORLD_RP_ID as string
@@ -22,6 +22,8 @@ export default function OnboardingModal() {
   const [verified, setVerified] = useState(false)
   const [checking, setChecking] = useState(false)
   const [name, setName] = useState('')
+  const [nameStatus, setNameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
+  const [saving, setSaving] = useState(false)
   const [rpContext, setRpContext] = useState<RpContext | null>(null)
   const [widgetOpen, setWidgetOpen] = useState(false)
 
@@ -68,13 +70,30 @@ export default function OnboardingModal() {
     } finally { setChecking(false) }
   }
 
+  // Debounced REAL availability check (previously the UI claimed any name "looks available").
+  useEffect(() => {
+    const n = name.toLowerCase()
+    if (!n) { setNameStatus('idle'); return }
+    setNameStatus('checking')
+    const t = setTimeout(() => {
+      getUser(n)
+        .then((b) => setNameStatus(b.user.address.toLowerCase() === address?.toLowerCase() ? 'available' : 'taken'))
+        .catch(() => setNameStatus('available')) // 404 = free
+    }, 400)
+    return () => clearTimeout(t)
+  }, [name, address])
+
   const saveName = async () => {
+    if (!address || !name) return
+    setSaving(true)
     try {
-      await fetch('/api/verify-proof', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ walletAddress: address, name }),
-      })
-    } catch { /* name is best-effort */ }
-    setStep(2)
+      await updateProfile({ address, name: name.toLowerCase() })
+      setStep(2)
+    } catch (e) {
+      toast.show((e as Error).message || 'Could not save the name', { kind: 'error' })
+    } finally {
+      setSaving(false)
+    }
   }
 
   const stepDot = (i: number, label: string) => (
@@ -134,10 +153,18 @@ export default function OnboardingModal() {
             <label htmlFor="claimName" className="text-muted">YOUR NAME</label>
           </div>
           <p className="small mb-3">
-            {name ? <span className="text-success">“{name}” looks available ✓</span> : <span className="text-muted">Pick a handle</span>}
+            {!name ? <span className="text-muted">Pick a handle</span>
+              : nameStatus === 'checking' ? <span className="text-muted">Checking availability…</span>
+              : nameStatus === 'taken' ? <span className="text-danger">“{name.toLowerCase()}” is taken</span>
+              : nameStatus === 'available' ? <span className="text-success">“{name.toLowerCase()}” is available</span>
+              : <span className="text-muted">&nbsp;</span>}
           </p>
-          <button className="btn btn-primary rounded-5 w-100 py-3 fw-bold" disabled={!name} onClick={saveName}>
-            Save name
+          <button
+            className="btn btn-primary rounded-5 w-100 py-3 fw-bold"
+            disabled={!name || nameStatus === 'taken' || nameStatus === 'checking' || saving}
+            onClick={saveName}
+          >
+            {saving ? 'Saving…' : 'Save name'}
           </button>
         </div>
       )}

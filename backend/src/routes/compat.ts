@@ -5,6 +5,7 @@ import { config, toUsdc, txUrl } from "../config.js";
 import { backendSigner, publicClient, arc } from "../chain.js";
 import { erc20Abi, registryAbi, settlerAbi } from "../abis.js";
 import { isAddr, verifyWorldProof, ensureGas } from "../util.js";
+import { requireAuth } from "../auth.js";
 import { db, kv, type AgentRow, type FeedItem, type Approval } from "../store.js";
 import { signRequest } from "@worldcoin/idkit-core/signing";
 import { createAgentInternal } from "./agents.js";
@@ -68,11 +69,12 @@ function toApproval(a: Approval) {
 export async function compatRoutes(app: FastifyInstance) {
   // real form-submitter per market (on-chain creator is always the backend signer)
   const submitters = (): Record<string, string> => kv.get("submitters", {});
-  const creatorNameOf = (id: number, chainCreator: string): string => {
+  const creatorUserOf = (id: number, chainCreator: string) => {
     const addr = submitters()[String(id)] ?? chainCreator;
-    const u = db.users.find((x) => x.address.toLowerCase() === addr.toLowerCase());
-    return u?.name ?? "justify";
+    return db.users.find((x) => x.address.toLowerCase() === addr.toLowerCase());
   };
+  const creatorNameOf = (id: number, chainCreator: string): string =>
+    creatorUserOf(id, chainCreator)?.name ?? "justify";
 
   // markets for the on-chain layer (FPMM addresses + live price)
   const { likesOf, commentsOf, recentCommentsOf } = await import("./social.js");
@@ -81,6 +83,8 @@ export async function compatRoutes(app: FastifyInstance) {
       id: m.id, address: m.address, question: m.question, metadataURI: m.metadataURI,
       priceYes: m.priceYes, volume: m.volume, resolved: m.resolved, outcome: m.outcome, closeTime: m.closeTime, oracle: m.oracle,
       creator: m.creator, creatorName: creatorNameOf(m.id, m.creator), createdAt: m.createdAt,
+      creatorVerified: !!creatorUserOf(m.id, m.creator)?.verified,
+      creatorAvatar: creatorUserOf(m.id, m.creator)?.avatar || null,
       likes: likesOf(m.id).length, comments: commentsOf(m.id).length,
       recentComments: recentCommentsOf(m.id, 3),
       // Path-B (Gnosis CTF) extras — null on the legacy stack
@@ -316,11 +320,15 @@ export async function compatRoutes(app: FastifyInstance) {
   app.post<{ Body: any }>("/api/profile", async (req, reply) => {
     const { address, name, avatar, bio, country } = (req.body ?? {}) as any;
     if (!/^0x[a-fA-F0-9]{40}$/.test(address ?? "")) return reply.code(400).send({ error: "bad address" });
+    // identity-asserting write: only the signed-in owner of this address may edit it
+    if (!requireAuth(req, reply, address)) return;
     const u = db.users.find((x) => x.address.toLowerCase() === address.toLowerCase());
     if (!u) return reply.code(404).send({ error: "user not found (verify first)" });
     const cleanName = name ? String(name).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : u.name;
     if (cleanName !== u.name && db.users.find((x) => x.name === cleanName)) return reply.code(409).send({ error: "name taken" });
-    db.users.patch(u.id, { name: cleanName, avatar: avatar ?? u.avatar, bio: bio ?? u.bio, country: country ? normCountry(country) : u.country });
+    const cleanBio = bio != null ? String(bio).slice(0, 280) : u.bio;
+    const cleanAvatar = avatar != null ? String(avatar).slice(0, 2048) : u.avatar; // URL, not a data blob
+    db.users.patch(u.id, { name: cleanName, avatar: cleanAvatar, bio: cleanBio, country: country ? normCountry(country) : u.country });
     return { ok: true, user: db.users.get(u.id) };
   });
 

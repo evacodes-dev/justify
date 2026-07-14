@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import { ensureConfig } from '../lib/markets'
+import { configureAuthSigner } from '../lib/auth'
 
 // Central wallet helper over Dynamic. Exposes the connected address, a login
 // prompt, and getChainWalletClient() which guarantees an EVM wallet switched to
@@ -21,6 +22,19 @@ export function useWallet() {
       .then((cfg) => primaryWallet.switchNetwork(cfg.chainId))
       .catch(() => {}) // network not enabled in Dynamic dashboard — writes will surface it
   }, [primaryWallet])
+
+  // Social writes are signed-session authed: register a message signer for the
+  // connected wallet (one "Justify sign-in" signature mints a 30-day token).
+  useEffect(() => {
+    if (!primaryWallet || !isEthereumWallet(primaryWallet) || !address) {
+      configureAuthSigner(undefined, null)
+      return
+    }
+    configureAuthSigner(address, async (message) => {
+      const wc = await primaryWallet.getWalletClient()
+      return wc.signMessage({ account: wc.account!, message })
+    })
+  }, [primaryWallet, address])
 
   const promptLogin = useCallback(() => setShowAuthFlow(true), [setShowAuthFlow])
 

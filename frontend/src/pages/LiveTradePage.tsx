@@ -40,7 +40,12 @@ export default function LiveTradePage() {
 
   const market: TradeMarket = {
     id: String(demo.id),
-    author: { name: demo.author ?? 'justify', handle: '@justify', avatar: '/img/images.jpeg' },
+    author: {
+      name: api.creatorName ?? 'justify',
+      handle: `@${api.creatorName ?? 'justify'}`,
+      avatar: api.creatorAvatar || '/img/images.jpeg',
+      verified: !!api.creatorVerified,
+    },
     date: api.resolved ? 'Resolved' : 'Live',
     wrapperClassName: 'd-md-flex',
     avatarClassName: 'mb-3 mb-md-0 img-fluid rounded-circle user-img',

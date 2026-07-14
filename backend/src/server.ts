@@ -18,8 +18,11 @@ if (pgEnabled) {
   }
 }
 
-const app = Fastify({ logger: true });
+// trustProxy: prod sits behind nginx — rate limiting must key on the real client IP
+const app = Fastify({ logger: true, trustProxy: true });
 await app.register(cors, { origin: true });
+// global per-IP throttle; write routes set stricter per-route limits via config.rateLimit
+await app.register(import("@fastify/rate-limit"), { max: 300, timeWindow: "1 minute" });
 
 // The product stack is CTF-only: a deployed MarketRegistry is required.
 if (!config.registry) {

@@ -30,9 +30,11 @@ export default function AccountSlider({ accounts }: { accounts: Account[] }) {
               <div className="position-relative d-flex justify-content-center">
                 <Link to={`/u/${account.name}`} className="text-decoration-none">
                   <img src={account.avatar} className="img-fluid rounded-circle mb-3" alt="profile-img" />
-                  <div className="position-absolute">
-                    <span className="material-icons bg-primary small p-1 fw-bold text-white rounded-circle">done</span>
-                  </div>
+                  {account.verified && (
+                    <div className="position-absolute">
+                      <span className="material-icons bg-primary small p-1 fw-bold text-white rounded-circle">done</span>
+                    </div>
+                  )}
                 </Link>
               </div>
               <p className="fw-bold text-white m-0">{account.name}</p>

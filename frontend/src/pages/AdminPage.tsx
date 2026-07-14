@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import VerifiedBadge from '../components/common/VerifiedBadge'
-import { adminListCreators, adminSetCreator, type AdminCreator } from '../lib/api'
+import {
+  adminListCreators, adminSetCreator, adminListCreatorRequests, adminDismissCreatorRequest,
+  type AdminCreator, type AdminCreatorRequest,
+} from '../lib/api'
 
 const SECRET_KEY = 'justify.adminSecret'
 const isAddr = (a: string) => /^0x[a-fA-F0-9]{40}$/.test(a)
@@ -11,19 +14,23 @@ const isAddr = (a: string) => /^0x[a-fA-F0-9]{40}$/.test(a)
 export default function AdminPage() {
   const [secret, setSecret] = useState(() => localStorage.getItem(SECRET_KEY) ?? '')
   const [creators, setCreators] = useState<AdminCreator[] | null>(null)
+  const [requests, setRequests] = useState<AdminCreatorRequest[] | null>(null)
   const [address, setAddress] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [notice, setNotice] = useState('')
 
   const load = useCallback(async (s: string) => {
-    if (!s) { setCreators(null); return }
+    if (!s) { setCreators(null); setRequests(null); return }
     setErr('')
     try {
       const r = await adminListCreators(s)
       setCreators(r.creators)
+      const q = await adminListCreatorRequests(s)
+      setRequests(q.requests)
     } catch (e: any) {
       setCreators(null)
+      setRequests(null)
       setErr(e?.message || 'Failed to load creators')
     }
   }, [])
@@ -91,6 +98,34 @@ export default function AdminPage() {
 
         {notice && <div className="alert alert-success rounded-4">{notice}</div>}
         {err && <div className="alert alert-danger rounded-4 text-break">{err}</div>}
+
+        {requests && requests.some((r) => r.status === 'pending') && (
+          <div className="bg-glass rounded-4 overflow-hidden shadow-sm mb-3">
+            <h6 className="fw-bold text-body p-3 mb-0 border-bottom">Creator requests</h6>
+            {requests.filter((r) => r.status === 'pending').map((r) => (
+              <div key={r.id} className="p-3 border-bottom">
+                <div className="d-flex align-items-center mb-1">
+                  <p className="fw-bold text-body mb-0 d-flex align-items-center">
+                    {r.name ?? 'unnamed'}{r.verified && <VerifiedBadge />}
+                  </p>
+                  <span className="text-muted small ms-auto">{new Date(r.ts).toLocaleString()}</span>
+                </div>
+                <code className="small text-muted text-break d-block mb-1">{r.address}</code>
+                <p className="text-body small mb-2" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{r.text}</p>
+                <div className="d-flex gap-2">
+                  <button className="btn btn-primary btn-sm rounded-pill px-3" disabled={busy}
+                    onClick={() => void setRole(r.address, true)}>
+                    Grant creator
+                  </button>
+                  <button className="btn btn-outline-secondary btn-sm rounded-pill px-3" disabled={busy}
+                    onClick={async () => { await adminDismissCreatorRequest(secret, r.id).catch(() => {}); void load(secret) }}>
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="bg-glass rounded-4 overflow-hidden shadow-sm">
           <h6 className="fw-bold text-body p-3 mb-0 border-bottom">Current creators</h6>

@@ -1,6 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { db, kv } from "../store.js";
+import { requireAuth, issueToken, verifyLoginSignature } from "../auth.js";
+
+// social write throttles (per IP, on top of the global limiter)
+const writeLimit = { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } };
+const authLimit = { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } };
 
 // Product social layer: likes + comments on markets + follower graph for creators, with an
 // unfollow confirmation handled client-side. kv-backed (durable once Postgres is on).
@@ -18,6 +23,7 @@ export const commentsOf = (marketId: number | string): CommentRow[] =>
   kv.get<CommentsMap>("comments", {})[String(marketId)] ?? [];
 
 type PostRow = { id: string; address: string; text: string; ts: number };
+export type CreatorRequest = { id: string; address: string; text: string; ts: number; status: "pending" | "approved" | "dismissed" };
 type PostLikesMap = Record<string, string[]>; // postId -> lowercase addresses
 type PostCommentsMap = Record<string, CommentRow[]>; // postId -> chronological comments
 
@@ -54,10 +60,20 @@ function resolveUser(key: string): string | undefined {
 }
 
 export async function socialRoutes(app: FastifyInstance) {
+  // ── auth: one EIP-191 signature per session → 30-day token for identity writes ──
+  app.post<{ Body: any }>("/api/auth", authLimit, async (req, reply) => {
+    const { address, ts, signature } = (req.body ?? {}) as { address?: string; ts?: number; signature?: string };
+    if (!isAddr(address) || !signature) return reply.code(400).send({ error: "address + signature required" });
+    const ok = await verifyLoginSignature(address as `0x${string}`, Number(ts), signature as `0x${string}`);
+    if (!ok) return reply.code(401).send({ error: "bad signature" });
+    return { token: issueToken(address!) };
+  });
+
   // ── likes ──
-  app.post<{ Body: any }>("/api/like", async (req, reply) => {
+  app.post<{ Body: any }>("/api/like", writeLimit, async (req, reply) => {
     const { address, marketId } = (req.body ?? {}) as { address?: string; marketId?: number | string };
     if (!isAddr(address)) return reply.code(400).send({ error: "address" });
+    if (!requireAuth(req, reply, address)) return;
     if (marketId == null || !db.markets.get(Number(marketId))) return reply.code(404).send({ error: "market" });
     const all = kv.get<LikesMap>("likes", {});
     const key = String(marketId);
@@ -80,17 +96,20 @@ export async function socialRoutes(app: FastifyInstance) {
   );
 
   // ── comments on markets ──
-  app.post<{ Body: any }>("/api/comment", async (req, reply) => {
+  app.post<{ Body: any }>("/api/comment", writeLimit, async (req, reply) => {
     const { address, marketId, text } = (req.body ?? {}) as { address?: string; marketId?: number | string; text?: string };
     if (!isAddr(address)) return reply.code(400).send({ error: "address" });
+    if (!requireAuth(req, reply, address)) return;
     if (marketId == null || !db.markets.get(Number(marketId))) return reply.code(404).send({ error: "market" });
     const t = String(text ?? "").trim();
     if (t.length < 1 || t.length > 500) return reply.code(400).send({ error: "text must be 1..500 chars" });
     const all = kv.get<CommentsMap>("comments", {});
     const key = String(marketId);
     const list = all[key] ?? [];
+    // hard cap per market: REJECT, never evict real comments
+    if (list.length >= 300) return reply.code(429).send({ error: "comment limit reached for this market" });
     const row: CommentRow = { id: randomUUID(), address: address!.toLowerCase(), text: t, ts: Date.now() };
-    all[key] = [...list, row].slice(-300); // cap per market
+    all[key] = [...list, row];
     kv.set("comments", all);
     return { ok: true, count: all[key].length, comment: row };
   });
@@ -112,14 +131,20 @@ export async function socialRoutes(app: FastifyInstance) {
   });
 
   // ── text posts ("vogels" — post your crypto ideas) ──
-  app.post<{ Body: any }>("/api/post", async (req, reply) => {
+  app.post<{ Body: any }>("/api/post", writeLimit, async (req, reply) => {
     const { address, text } = (req.body ?? {}) as { address?: string; text?: string };
     if (!isAddr(address)) return reply.code(400).send({ error: "address" });
+    if (!requireAuth(req, reply, address)) return;
     const t = String(text ?? "").trim();
     if (t.length < 1 || t.length > 500) return reply.code(400).send({ error: "text must be 1..500 chars" });
     const posts = kv.get<PostRow[]>("posts", []);
-    const row: PostRow = { id: randomUUID(), address: address!.toLowerCase(), text: t, ts: Date.now() };
-    kv.set("posts", [...posts, row].slice(-500));
+    // per-author daily cap so one account can't flood the global feed
+    const a = address!.toLowerCase();
+    const day = Date.now() - 86_400_000;
+    if (posts.filter((p) => p.address === a && p.ts > day).length >= 20)
+      return reply.code(429).send({ error: "daily post limit reached" });
+    const row: PostRow = { id: randomUUID(), address: a, text: t, ts: Date.now() };
+    kv.set("posts", [...posts, row].slice(-2000));
     return { ok: true, post: enrich([row])[0] };
   });
 
@@ -147,9 +172,10 @@ export async function socialRoutes(app: FastifyInstance) {
   });
 
   // ── likes + comments on text posts ──
-  app.post<{ Body: any }>("/api/post-like", async (req, reply) => {
+  app.post<{ Body: any }>("/api/post-like", writeLimit, async (req, reply) => {
     const { address, postId } = (req.body ?? {}) as { address?: string; postId?: string };
     if (!isAddr(address)) return reply.code(400).send({ error: "address" });
+    if (!requireAuth(req, reply, address)) return;
     const id = String(postId ?? "");
     if (!kv.get<PostRow[]>("posts", []).some((p) => p.id === id)) return reply.code(404).send({ error: "post" });
     const all = kv.get<PostLikesMap>("postLikes", {});
@@ -162,16 +188,19 @@ export async function socialRoutes(app: FastifyInstance) {
     return { liked, count: cur.size };
   });
 
-  app.post<{ Body: any }>("/api/post-comment", async (req, reply) => {
+  app.post<{ Body: any }>("/api/post-comment", writeLimit, async (req, reply) => {
     const { address, postId, text } = (req.body ?? {}) as { address?: string; postId?: string; text?: string };
     if (!isAddr(address)) return reply.code(400).send({ error: "address" });
+    if (!requireAuth(req, reply, address)) return;
     const id = String(postId ?? "");
     if (!kv.get<PostRow[]>("posts", []).some((p) => p.id === id)) return reply.code(404).send({ error: "post" });
     const t = String(text ?? "").trim();
     if (t.length < 1 || t.length > 500) return reply.code(400).send({ error: "text must be 1..500 chars" });
     const all = kv.get<PostCommentsMap>("postComments", {});
+    const list = all[id] ?? [];
+    if (list.length >= 300) return reply.code(429).send({ error: "comment limit reached for this post" });
     const row: CommentRow = { id: randomUUID(), address: address!.toLowerCase(), text: t, ts: Date.now() };
-    all[id] = [...(all[id] ?? []), row].slice(-300);
+    all[id] = [...list, row];
     kv.set("postComments", all);
     return { ok: true, count: all[id].length, comment: enrich([row])[0] };
   });
@@ -191,7 +220,9 @@ export async function socialRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { name: string } }>("/api/mentions/:name", async (req) => {
     const handle = String(req.params.name).toLowerCase().replace(/^@/, "");
-    const rx = new RegExp(`@${handle}\\b`, "i");
+    // escape regex metacharacters — user-controlled input compiled into a RegExp is a ReDoS vector
+    const safe = handle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rx = new RegExp(`@${safe}\\b`, "i");
     const posts = kv.get<PostRow[]>("posts", []).filter((p) => rx.test(p.text)).map((p) => ({ ...p, kind: "post" as const }));
     const cm = kv.get<CommentsMap>("comments", {});
     const comments = Object.entries(cm).flatMap(([mid, rows]) =>
@@ -201,10 +232,36 @@ export async function socialRoutes(app: FastifyInstance) {
     return { mentions: items };
   });
 
+  // ── creator requests: users apply, admins review on /admin ──
+  app.post<{ Body: any }>("/api/creator-request", writeLimit, async (req, reply) => {
+    const { address, text } = (req.body ?? {}) as { address?: string; text?: string };
+    if (!isAddr(address)) return reply.code(400).send({ error: "address" });
+    if (!requireAuth(req, reply, address)) return;
+    const t = String(text ?? "").trim();
+    if (t.length < 10 || t.length > 1000) return reply.code(400).send({ error: "tell us a bit more (10..1000 chars)" });
+    const a = address!.toLowerCase();
+    const u = db.users.find((x) => x.address.toLowerCase() === a);
+    if (u?.creator) return reply.code(409).send({ error: "you are already a creator" });
+    const rows = kv.get<CreatorRequest[]>("creatorRequests", []);
+    if (rows.some((r) => r.address === a && r.status === "pending"))
+      return reply.code(409).send({ error: "request already pending" });
+    rows.push({ id: randomUUID(), address: a, text: t, ts: Date.now(), status: "pending" });
+    kv.set("creatorRequests", rows.slice(-500));
+    return { ok: true, status: "pending" };
+  });
+
+  app.get<{ Params: { address: string } }>("/api/creator-request/:address", async (req, reply) => {
+    if (!isAddr(req.params.address)) return reply.code(400).send({ error: "address" });
+    const a = req.params.address.toLowerCase();
+    const mine = kv.get<CreatorRequest[]>("creatorRequests", []).filter((r) => r.address === a);
+    return { status: mine.length ? mine[mine.length - 1].status : "none" };
+  });
+
   // ── follows (subscribe to creators) ──
-  app.post<{ Body: any }>("/api/follow", async (req, reply) => {
+  app.post<{ Body: any }>("/api/follow", writeLimit, async (req, reply) => {
     const { follower, target } = (req.body ?? {}) as { follower?: string; target?: string };
     if (!isAddr(follower)) return reply.code(400).send({ error: "follower" });
+    if (!requireAuth(req, reply, follower)) return;
     const t = resolveUser(String(target ?? ""));
     if (!t) return reply.code(404).send({ error: "target not found" });
     if (t === follower!.toLowerCase()) return reply.code(400).send({ error: "cannot follow yourself" });

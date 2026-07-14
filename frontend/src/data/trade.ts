@@ -9,6 +9,7 @@ export interface TradeMarket {
     name: string
     handle: string
     avatar: string
+    verified?: boolean
     // the Barcelona logo renders square via an inline
     // `border-radius:0px !important` override
     squareAvatar?: boolean
