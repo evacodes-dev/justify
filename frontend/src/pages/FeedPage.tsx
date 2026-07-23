@@ -5,14 +5,13 @@ import AccountListItem from '../components/feed/AccountListItem'
 import MarketCard from '../components/market/MarketCard'
 import MarketFeedItem from '../components/feed/MarketFeedItem'
 import UserPostCard from '../components/feed/UserPostCard'
-import EventCard from '../components/feed/EventCard'
 import EmptyState from '../components/common/EmptyState'
 import { useUi } from '../components/layout/UiContext'
 import { useMarkets, type MarketRow } from '../hooks/useMarkets'
 import { useCreators } from '../hooks/useCreators'
 import { useWallet } from '../hooks/useWallet'
 import { toUiMarket } from '../lib/markets'
-import { getActivityFeed, getPosts, type ActivityItem, type UserPost } from '../lib/api'
+import { getPosts, type UserPost } from '../lib/api'
 import type { Account } from '../types'
 
 type Tab = 'feed' | 'people' | 'trending'
@@ -55,27 +54,6 @@ function PeopleSection({ title, accounts }: { title: string; accounts: Account[]
   )
 }
 
-// Recent human trades + oracle resolutions (agent noise filtered out).
-function ActivitySection({ accounts }: { accounts: Account[] }) {
-  const [items, setItems] = useState<ActivityItem[]>([])
-  useEffect(() => {
-    let alive = true
-    const load = () =>
-      getActivityFeed()
-        .then((b) => { if (alive) setItems((b.feed ?? []).filter((f) => f.kind !== 'agent').slice(0, 5)) })
-        .catch(() => {})
-    load()
-    const t = setInterval(load, 15_000)
-    return () => { alive = false; clearInterval(t) }
-  }, [])
-  if (!items.length) return null
-  return (
-    <div className="mb-3">
-      <h6 className="fw-bold text-body mb-2 px-lg-3">Recent activity</h6>
-      {items.map((item) => <EventCard key={item.id} item={item} accounts={accounts} />)}
-    </div>
-  )
-}
 
 // "Post your crypto ideas" composer strip → opens the post modal.
 function ComposerStrip() {
@@ -165,7 +143,6 @@ export default function FeedPage() {
                     <AccountSlider accounts={creators} />
                   </div>
                 )}
-                <ActivitySection accounts={creators} />
                 {loading && !entries.length ? (
                   <div className="text-center py-5"><div className="spinner-border" role="status" /></div>
                 ) : entries.length ? (
