@@ -59,3 +59,7 @@ backend/data/
 !contracts/vendor/out/
 !contracts/vendor/out/**
 backend/data-arc-backup*/
+
+# local secrets bundle — never commit
+justify-local-not-in-git.zip
+*.zip
