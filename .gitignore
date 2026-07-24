@@ -1,6 +1,8 @@
 # SECRETS — never commit (no inline comments: gitignore treats them as part of the pattern)
 ssh/
 SECRETS.handoff.txt
+ADMIN_SECRET.txt
+RESTORE_README.txt
 signing-key*.json
 **/.env
 **/.env.*
