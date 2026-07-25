@@ -233,7 +233,9 @@ export default function ResolutionBlock({ market }: { market: ApiMarket }) {
           </span>
         </div>
         {resolution?.rationale ? (
-          <p className="text-muted small mb-2" style={{ whiteSpace: 'pre-wrap' }}>{resolution.rationale}</p>
+          <p className="text-muted small mb-2" style={{ whiteSpace: 'pre-wrap' }}>
+            {stripBundleUri(resolution.rationale).replace(/^Optimistic settlement[^:]*:\s*/, '')}
+          </p>
         ) : (
           <p className="text-muted small mb-2">Outcome settled on-chain.</p>
         )}
@@ -245,7 +247,6 @@ export default function ResolutionBlock({ market }: { market: ApiMarket }) {
               resolution tx ↗
             </a>
           ) : <span />}
-          {resolution?.model && <span className="text-muted">{resolution.model}</span>}
         </div>
         {canRedeem && (
           <button className="btn btn-primary rounded-4 w-100 mt-3 fw-bold" disabled={claiming} onClick={redeem}>

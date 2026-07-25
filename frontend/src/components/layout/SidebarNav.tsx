@@ -8,7 +8,6 @@ const mainNavItems = [
   { to: '/', icon: 'house', label: 'Feed' },
   { to: '/market', icon: 'candlestick_chart', label: 'Markets' },
   { to: '/leaderboard', icon: 'leaderboard', label: 'Leaderboard' },
-  { to: '/proof', icon: 'verified', label: 'Proof' },
   { to: '/portfolio', icon: 'cases', label: 'Portfolio' },
   { to: '/deposit', icon: 'account_balance_wallet', label: 'Deposit' },
   { to: '/profile', icon: 'account_circle', label: 'My Profile' },
