@@ -25,11 +25,11 @@ export default function AccountSlider({ accounts }: { accounts: Account[] }) {
     <Slider {...sliderSettings} className="account-slider border-bottom px-lg-3 pb-3">
       {accounts.map((account) => (
         <div className="account-item" key={account.id}>
-          <div className="me-2 bg-glass shadow-sm rounded-4 p-3 user-list-item d-flex justify-content-center my-2">
-            <div className="text-center">
-              <div className="position-relative d-flex justify-content-center">
+          <div className="me-3 bg-glass shadow-sm rounded-4 p-3 user-list-item d-flex justify-content-center my-2">
+            <div className="text-center d-flex flex-column align-items-center">
+              <div className="position-relative d-flex justify-content-center mb-3">
                 <Link to={`/u/${account.name}`} className="text-decoration-none">
-                  <img src={account.avatar} className="rounded-circle mb-3" alt="profile-img" style={{ width: 60, height: 60, objectFit: 'cover' }} />
+                  <img src={account.avatar} className="rounded-circle" alt="profile-img" style={{ width: 60, height: 60, objectFit: 'cover' }} />
                   {account.verified && (
                     <div className="position-absolute">
                       <span className="material-icons bg-primary small p-1 fw-bold text-white rounded-circle">done</span>
@@ -37,7 +37,7 @@ export default function AccountSlider({ accounts }: { accounts: Account[] }) {
                   )}
                 </Link>
               </div>
-              <p className="fw-bold text-white m-0 text-truncate" style={{ maxWidth: 110 }}>@{account.name}</p>
+              <p className="fw-bold text-white mb-3 text-truncate" style={{ maxWidth: 110 }}>@{account.name}</p>
               <FollowButton target={account.name} initialFollowing={account.following} />
             </div>
           </div>

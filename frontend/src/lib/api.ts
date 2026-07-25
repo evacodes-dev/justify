@@ -314,3 +314,72 @@ export async function getResolution(id: number | string): Promise<Resolution | n
     return null
   }
 }
+
+// GET /api/proof — live, chain-read evidence for every integration. Each field is fetched
+// server-side at request time from the subgraph, 0G Chain and Ethereum, so the page can show
+// facts instead of claims.
+export interface Proof {
+  graph: {
+    endpoint: string
+    studio: string
+    block: number
+    healthy: boolean
+    totals: {
+      marketCount: number
+      resolvedMarketCount: number
+      tradeCount: number
+      traderCount: number
+      volumeUSDC: string
+      aiProposalCount: number
+      challengeCount: number
+    } | null
+    latestAiResolution: { marketId: string; question: string; outcome: string; reason: string } | null
+  }
+  zg: {
+    enabled: boolean
+    storage: { indexer: string; gateway: string }
+    chain: {
+      contract: string
+      chainId: number
+      explorer: string
+      count: number
+      latest: {
+        marketId: number
+        bundleRoot: string
+        outcome: number
+        teeVerified: boolean
+        teeSigner: string
+        model: string
+      } | null
+    } | null
+  }
+  erc8004: {
+    chain: string
+    chainId: number
+    identityRegistry: string
+    reputationRegistry: string
+    registered: number
+    agents: { name: string; address: string; agentId: string; token: string; feedbackCount: number; avgScore: number | null }[]
+  }
+  x402: {
+    enabled: boolean
+    live?: boolean
+    price: string
+    network: string
+    asset?: string | null
+    payTo?: string | null
+    facilitator?: string
+    sampleEndpoint?: string
+  }
+  world: {
+    devBypass: boolean
+    verifiedUsers: number
+    identityVerifiedUsers: number
+  }
+  settlement: { chainId: number; registry: string; explorer: string }
+  generatedAt: string
+}
+
+export function getProof() {
+  return apiFetch<Proof>('/api/proof')
+}

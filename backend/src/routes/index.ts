@@ -12,6 +12,7 @@ export async function registerWriteRoutes(app: FastifyInstance) {
   const { socialRoutes } = await import("./social.js");
   const { adminRoutes } = await import("./admin.js");
   const { reputationRoutes } = await import("./reputation.js");
+  const { proofRoutes } = await import("./proof.js");
   await agentRoutes(app); // agent management (feature-flagged off by default)
   await depositRoutes(app); // Blink deposit signer
   await opsRoutes(app); // internal ops (resolve/tick)
@@ -22,4 +23,5 @@ export async function registerWriteRoutes(app: FastifyInstance) {
   await socialRoutes(app); // likes + followers
   await adminRoutes(app); // creator-role management (x-admin-secret)
   await reputationRoutes(app); // x402-gated agent reputation (pay-per-query)
+  await proofRoutes(app); // live, chain-read proof of every integration
 }

@@ -18,6 +18,7 @@ import CreatePage from './pages/CreatePage'
 import AdminPage from './pages/AdminPage'
 import HelpPage from './pages/HelpPage'
 import LeaderboardPage from './pages/LeaderboardPage'
+import ProofPage from './pages/ProofPage'
 import NotFoundPage from './pages/NotFoundPage'
 import OwnerMarketPage from './pages/OwnerMarketPage'
 
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/create" element={<CreatePage />} />
             <Route path="/help" element={<HelpPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/proof" element={<ProofPage />} />
             {/* hidden — reachable by URL only, no nav entry */}
             <Route path="/admin" element={<AdminPage />} />
             {/* pretty product URLs: /<founder> and /<founder>/<market>.
