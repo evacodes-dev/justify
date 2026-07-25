@@ -53,7 +53,7 @@ function WhoToFollow() {
           className={`p-3 d-flex text-dark text-decoration-none account-item${i < shown.length - 1 ? ' border-bottom' : ''}`}
         >
           <Link to={`/u/${account.name}`} className="flex-shrink-0">
-            <img src={account.avatar} className="img-fluid rounded-circle me-3" alt="profile-img" />
+            <img src={account.avatar} className="rounded-circle me-3" alt="profile-img" style={{ width: 40, height: 40, objectFit: 'cover', flexShrink: 0 }} />
           </Link>
           <div className="flex-grow-1" style={{ minWidth: 0 }}>
             <p className="fw-bold mb-0 pe-2 d-flex align-items-center text-truncate">

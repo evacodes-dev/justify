@@ -6,7 +6,7 @@ export default function CommentItem({ comment }: { comment: Comment }) {
   return (
     <div className="d-flex mb-2">
       <Link to={`/${comment.author.toLowerCase()}`} className="text-white text-decoration-none">
-        <img src={comment.avatar} className="img-fluid rounded-circle" alt="commenters-img" />
+        <img src={comment.avatar} className="rounded-circle" alt="commenters-img" style={{ width: 32, height: 32, objectFit: 'cover', flexShrink: 0 }} />
       </Link>
       <div className="ms-2 small">
         <div className="bg-glass px-3 py-2 rounded-4 mb-1 chat-text">

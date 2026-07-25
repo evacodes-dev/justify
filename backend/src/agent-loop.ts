@@ -97,25 +97,40 @@ export async function executeBuy(agent: AgentRow, market: Market, outcome: "YES"
   const side = BigInt(outcome === "YES" ? 1 : 0); // FPMM outcome index: 0 = NO, 1 = YES
   const fpmm = market.address as `0x${string}`;
   return signer.run(async ({ wallet, account }) => {
+    // Approve the whole remaining budget, not the exact amount: an exact approve is spent by
+    // the first buy, and the next tick's read-then-approve raced it into "transfer amount
+    // exceeds allowance" reverts.
+    const headroom = () => toUsdc(Math.max(agent.budgetUsdc - agent.spentUsdc, amount));
+    const approve = async () => {
+      const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [fpmm, headroom()], account, chain: arc });
+      await publicClient.waitForTransactionReceipt({ hash: ah });
+    };
+
     const allowance = (await publicClient.readContract({
       address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, fpmm],
     })) as bigint;
-    if (allowance < amt) {
-      // Approve the whole remaining budget, not the exact amount: an exact approve is spent by
-      // the first buy, and the next tick's read-then-approve raced it into
-      // "transfer amount exceeds allowance" reverts.
-      const headroom = toUsdc(Math.max(agent.budgetUsdc - agent.spentUsdc, amount));
-      const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [fpmm, headroom], account, chain: arc });
-      await publicClient.waitForTransactionReceipt({ hash: ah });
-    }
+    if (allowance < amt) await approve();
+
     // quote then buy with 2% slippage bound (audited Gnosis FPMM)
     const quote = (await publicClient.readContract({
       address: fpmm, abi: fpmmAbi, functionName: "calcBuyAmount", args: [amt, side],
     })) as bigint;
     const minOut = (quote * 98n) / 100n;
-    const tx = await wallet.writeContract({ address: fpmm, abi: fpmmAbi, functionName: "buy", args: [amt, side, minOut], account, chain: arc });
-    await publicClient.waitForTransactionReceipt({ hash: tx });
-    return tx;
+    const buy = async () => {
+      const tx = await wallet.writeContract({ address: fpmm, abi: fpmmAbi, functionName: "buy", args: [amt, side, minOut], account, chain: arc });
+      await publicClient.waitForTransactionReceipt({ hash: tx });
+      return tx;
+    };
+
+    try {
+      return await buy();
+    } catch (e) {
+      // Public RPCs serve stale allowance reads, so the check above can pass against a value
+      // the chain has already spent. Re-approve from fresh state and retry once.
+      if (!/allowance/i.test((e as Error).message)) throw e;
+      await approve();
+      return await buy();
+    }
   });
 }
 

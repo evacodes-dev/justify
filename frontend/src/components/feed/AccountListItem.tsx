@@ -10,22 +10,17 @@ export default function AccountListItem({ account, borderBottom }: { account: Ac
       to={`/u/${account.name}`}
       className={`p-3${borderBottom ? ' border-bottom' : ''} d-flex text-dark text-decoration-none account-item pf-item`}
     >
-      <img src={account.avatar} className="img-fluid rounded-circle me-3" alt="profile-img" />
-      <div>
+      <img src={account.avatar} className="rounded-circle me-3" alt="profile-img" style={{ width: 48, height: 48, objectFit: 'cover', flexShrink: 0 }} />
+      <div style={{ minWidth: 0 }}>
         <p className="fw-bold mb-0 pe-3 d-flex align-items-center text-white">
-          {account.name}
+          @{account.name}
           {account.verified && <VerifiedBadge />}
         </p>
-        <div className={account.promoted ? 'text-muted fw-light' : undefined}>
-          <p className={account.promoted ? 'mb-1 small' : 'fw-light text-muted mb-1 small'}>{account.handle}</p>
-          {account.promoted ? (
-            <span className="text-muted d-flex align-items-center small">
-              <span className="material-icons me-1 small">open_in_new</span>Promoted
-            </span>
-          ) : (
-            <span className="d-flex align-items-center small text-white">{account.bio}</span>
-          )}
-        </div>
+        {account.promoted && (
+          <span className="text-muted d-flex align-items-center small">
+            <span className="material-icons me-1 small">open_in_new</span>Promoted
+          </span>
+        )}
       </div>
       <div className="ms-auto">
         <FollowButton target={account.name} />

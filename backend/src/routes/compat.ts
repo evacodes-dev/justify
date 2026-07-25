@@ -16,6 +16,7 @@ import { tickAgent, executeBuy } from "../agent-loop.js";
 import { hasFeed, readChainlinkPrice } from "../chainlink.js";
 import { bundleUriFromReason } from "../justification.js";
 import { downloadJson } from "../zg-storage.js";
+import { querySubgraph } from "../subgraph.js";
 
 // Compatibility layer: serves the `/api/*` contract the SPA front-end already codes
 // against (showcase shapes), backed by the REAL FPMM contracts + agent loop. Lets the
@@ -48,6 +49,7 @@ function toPublicAgent(a: AgentRow) {
     owner: a.ownerAddress, humanId: a.ownerHumanId, humanBacked: a.humanBacked,
     record: { w: a.wins, l: a.losses }, budgetUsdc: a.budgetUsdc, spentUsdc: a.spentUsdc, active: a.active,
     public: isPublicAgent(a),
+    erc8004Id: a.erc8004Id ?? null,
   };
 }
 
@@ -591,7 +593,11 @@ export async function compatRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/api/resolution/:id", async (req, reply) => {
     const m = db.markets.get(Number(req.params.id));
     if (!m || !m.resolved) return reply.code(404).send({ error: "not resolved" });
-    const reason = m.reason ?? "";
+    // The local indexer records that a market resolved (from the CTF payout report) but not
+    // WHY — the reason string lives in the resolver's Resolved event, which the subgraph
+    // already indexes. Fall back to it so the evidence pointer survives finalization.
+    let reason = m.reason ?? "";
+    if (reason === "") reason = await resolutionReasonFromSubgraph(m.id).catch(() => "");
     const bundleUri = bundleUriFromReason(reason);
     return {
       id: m.id,
@@ -631,7 +637,26 @@ export async function compatRoutes(app: FastifyInstance) {
 
 const bundleCache = new Map<string, unknown>();
 
-const VISIBLE_MARKET_IDS: Set<number> | null = (() => {
+const REASON_QUERY = `query Reason($id: ID!) { market(id: $id) { resolutionReason } }`;
+const reasonCache = new Map<number, string>();
+
+/// Resolution reasons are immutable once settled — cache them so the market page does not
+/// hit the subgraph on every view.
+async function resolutionReasonFromSubgraph(marketId: number): Promise<string> {
+  const cached = reasonCache.get(marketId);
+  if (cached !== undefined) return cached;
+  const { data } = await querySubgraph<{ market: { resolutionReason: string | null } | null }>(
+    REASON_QUERY,
+    { id: String(marketId) },
+  );
+  const reason = data.market?.resolutionReason ?? "";
+  if (reason !== "") reasonCache.set(marketId, reason);
+  return reason;
+}
+
+// Read per call, not once at module load: the allowlist is a live demo knob, and pm2 can
+// hand a restarted process a stale env — a curated board should not need a redeploy.
+function visibleMarketIds(): Set<number> | null {
   const raw = (process.env.VISIBLE_MARKET_IDS ?? "").trim();
   if (raw === "") return null;
   const ids = raw
@@ -639,7 +664,9 @@ const VISIBLE_MARKET_IDS: Set<number> | null = (() => {
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isInteger(n));
   return ids.length > 0 ? new Set(ids) : null;
-})();
+}
 
-const isVisibleMarket = (id: number): boolean =>
-  VISIBLE_MARKET_IDS === null || VISIBLE_MARKET_IDS.has(id);
+const isVisibleMarket = (id: number): boolean => {
+  const allow = visibleMarketIds();
+  return allow === null || allow.has(id);
+};

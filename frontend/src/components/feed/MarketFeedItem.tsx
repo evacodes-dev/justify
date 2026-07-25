@@ -54,7 +54,7 @@ export default function MarketFeedItem({
         {api.creatorName && (
           <div className="d-flex align-items-center mb-2">
             <Link to={`/${api.creatorName}`}>
-              <img src={creator?.avatar || '/img/images.jpeg'} className="img-fluid rounded-circle" style={{ width: 36, height: 36 }} alt="creator" />
+              <img src={creator?.avatar || '/img/images.jpeg'} className="rounded-circle" style={{ width: 36, height: 36, objectFit: 'cover', flexShrink: 0 }} alt="creator" />
             </Link>
             <Link to={`/${api.creatorName}`} className="text-decoration-none d-flex align-items-center ms-2 flex-grow-1">
               <span className="fw-bold text-body">@{api.creatorName}</span>

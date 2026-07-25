@@ -29,7 +29,7 @@ export default function AccountSlider({ accounts }: { accounts: Account[] }) {
             <div className="text-center">
               <div className="position-relative d-flex justify-content-center">
                 <Link to={`/u/${account.name}`} className="text-decoration-none">
-                  <img src={account.avatar} className="img-fluid rounded-circle mb-3" alt="profile-img" />
+                  <img src={account.avatar} className="rounded-circle mb-3" alt="profile-img" style={{ width: 60, height: 60, objectFit: 'cover' }} />
                   {account.verified && (
                     <div className="position-absolute">
                       <span className="material-icons bg-primary small p-1 fw-bold text-white rounded-circle">done</span>
@@ -37,8 +37,7 @@ export default function AccountSlider({ accounts }: { accounts: Account[] }) {
                   )}
                 </Link>
               </div>
-              <p className="fw-bold text-white m-0">{account.name}</p>
-              <p className="small text-muted">{account.bio}</p>
+              <p className="fw-bold text-white m-0 text-truncate" style={{ maxWidth: 110 }}>@{account.name}</p>
               <FollowButton target={account.name} initialFollowing={account.following} />
             </div>
           </div>

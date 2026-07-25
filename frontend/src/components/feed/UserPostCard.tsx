@@ -63,7 +63,7 @@ export default function UserPostCard({ post }: { post: UserPost }) {
       <div className="bg-glass p-3 feed-item rounded-4 shadow-sm">
         <div className="d-flex align-items-center mb-2">
           <Link to={`/${post.name}`}>
-            <img src={post.avatar} className="img-fluid rounded-circle" style={{ width: 40, height: 40 }} alt="avatar" />
+            <img src={post.avatar} className="rounded-circle" style={{ width: 40, height: 40, objectFit: 'cover', flexShrink: 0 }} alt="avatar" />
           </Link>
           <div className="ms-2 flex-grow-1" style={{ minWidth: 0 }}>
             <Link to={`/${post.name}`} className="text-decoration-none d-flex align-items-center">

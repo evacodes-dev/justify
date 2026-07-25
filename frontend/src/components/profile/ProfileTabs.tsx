@@ -79,7 +79,7 @@ export default function ProfileTabs({ name, address }: { name: string; address?:
             {mentions.map((m) => (
               <div key={`${m.kind}-${m.id}`} className="bg-glass rounded-4 shadow-sm p-3 mb-2">
                 <div className="d-flex align-items-center mb-1">
-                  <img src={m.avatar} className="rounded-circle" style={{ width: 28, height: 28 }} alt="" />
+                  <img src={m.avatar} className="rounded-circle" style={{ width: 28, height: 28, objectFit: 'cover', flexShrink: 0 }} alt="" />
                   <Link to={`/${m.name}`} className="text-decoration-none text-body fw-bold ms-2">{m.name}</Link>
                   <span className="text-muted small ms-2">
                     {m.kind === 'comment' && m.marketId != null
