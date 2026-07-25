@@ -16,11 +16,12 @@ const usd = (v: number) =>
   v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function LeaderboardPage() {
-  const { data: rows, isLoading } = useQuery({
+  const { data: rows, isLoading, isError } = useQuery({
     queryKey: ['leaderboard'],
     queryFn: () => getLeaderboard(25),
     enabled: hasSubgraph(),
     refetchInterval: 15_000,
+    retry: 2,
   })
   const { data: stats } = useQuery({
     queryKey: ['indexed-stats'],
@@ -47,6 +48,14 @@ export default function LeaderboardPage() {
             <p className="text-muted small mb-0">Subgraph endpoint is not configured.</p>
           )}
           {isLoading && <p className="text-muted small mb-0">Loading from the subgraph…</p>}
+          {/* This page has no backend equivalent — say so plainly rather than render a blank
+              card if the indexer is unreachable. */}
+          {isError && (
+            <p className="text-warning small mb-0">
+              The subgraph is not responding right now. This table is computed entirely inside
+              the subgraph mappings, so there is no backend fallback — retrying automatically.
+            </p>
+          )}
 
           {rows !== undefined && rows.length === 0 && (
             <p className="text-muted small mb-0">No trades indexed yet.</p>
