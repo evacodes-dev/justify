@@ -7,6 +7,7 @@ import { useUi } from './UiContext'
 const mainNavItems = [
   { to: '/', icon: 'house', label: 'Feed' },
   { to: '/market', icon: 'candlestick_chart', label: 'Markets' },
+  { to: '/agents', icon: 'smart_toy', label: 'Agents' },
   { to: '/leaderboard', icon: 'leaderboard', label: 'Leaderboard' },
   { to: '/portfolio', icon: 'cases', label: 'Portfolio' },
   { to: '/deposit', icon: 'account_balance_wallet', label: 'Deposit' },

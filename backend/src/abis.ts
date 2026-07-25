@@ -14,6 +14,12 @@ export const resolverAbi = parseAbi([
 // Chainlink AggregatorV3 (settlement chain) — used to scale thresholds to feed decimals.
 export const aggregatorDecimalsAbi = parseAbi(["function decimals() view returns (uint8)"]);
 
+// Full aggregator read used to quote the feed that resolves a market, on the settlement chain.
+export const aggregatorAbi = parseAbi([
+  "function decimals() view returns (uint8)",
+  "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
+]);
+
 // Path-B stack: our thin MarketRegistry over the audited Gnosis CTF/FPMM contracts.
 export const registryAbi = parseAbi([
   "function createMarket(address collateral, string question, string metadataURI, uint64 closeTime, uint256 initialLiquidity) external returns (uint256 id, address fpmm)",

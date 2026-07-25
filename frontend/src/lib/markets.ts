@@ -165,3 +165,16 @@ export const CTF_ABI = [
   { type: 'function', name: 'isApprovedForAll', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'bool' }] },
   { type: 'function', name: 'redeemPositions', stateMutability: 'nonpayable', inputs: [{ type: 'address', name: 'collateralToken' }, { type: 'bytes32', name: 'parentCollectionId' }, { type: 'bytes32', name: 'conditionId' }, { type: 'uint256[]', name: 'indexSets' }], outputs: [] },
 ] as const
+
+// The committed Chainlink rule a price market carries in its metadata. Present only for
+// markets created through the price form — subjective markets return null.
+export function priceRuleOf(m: ApiMarket): { asset: string; threshold: number; comparator: 'above' | 'below' } | null {
+  try {
+    const meta = JSON.parse(m.metadataURI || '{}')
+    const p = meta.price
+    if (!p?.asset || typeof p.threshold !== 'number') return null
+    return { asset: String(p.asset), threshold: p.threshold, comparator: p.comparator === 'below' ? 'below' : 'above' }
+  } catch {
+    return null
+  }
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ApiMarket } from '../../lib/markets'
+import { priceRuleOf, type ApiMarket } from '../../lib/markets'
 import { challengeProposal, redeemPositions, redeemValue, txUrl } from '../../lib/arc'
 import { useCtfShares } from '../../hooks/useArcMarket'
 import { getProposal, getResolution, type ProposalState, type Resolution } from '../../lib/api'
@@ -239,7 +239,16 @@ export default function ResolutionBlock({ market }: { market: ApiMarket }) {
         ) : (
           <p className="text-muted small mb-2">Outcome settled on-chain.</p>
         )}
-        {resolution?.oracle === 'chainlink' && <div className="mb-2"><ChainlinkBadge question={market.question} /></div>}
+        {resolution?.oracle === 'chainlink' && (
+          <div className="mb-2">
+            <ChainlinkBadge
+              question={market.question}
+              rule={priceRuleOf(market)}
+              resolved
+              outcome={wonSide as 'YES' | 'NO' | 'INVALID'}
+            />
+          </div>
+        )}
         {resolution !== null && <VerifiableAiBadge reason={resolution.rationale} />}
         <div className="d-flex align-items-center justify-content-between small">
           {resolution?.tx ? (

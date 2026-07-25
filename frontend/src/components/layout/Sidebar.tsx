@@ -22,24 +22,24 @@ function SignInButton() {
   const { address } = useWallet();
   const { balance } = useUsdcBalance(address);
   const className =
-    "btn btn-primary w-100 text-decoration-none rounded-4 py-3 fw-bold text-uppercase m-0";
+    "btn btn-primary w-100 text-decoration-none rounded-4 py-2 fw-bold text-uppercase m-0";
 
   if (primaryWallet) {
     return (
       <div className="d-flex flex-column gap-2">
         <button
           type="button"
-          className={`${className} d-flex flex-column align-items-center gap-1`}
+          className={`${className} d-flex flex-column align-items-center gap-0 py-2`}
           onClick={() => setShowDynamicUserProfile(true)}
         >
           <span>{shortAddress(primaryWallet.address)}</span>
-          <span className="badge text-body fw-normal text-lowercase">
+          <span className="badge text-body fw-normal text-lowercase p-0">
             {balance == null ? "… USDC" : `$${balance.toFixed(2)} USDC · Base`}
           </span>
         </button>
         <button
           type="button"
-          className="btn btn-outline-secondary w-100 rounded-4 py-2 fw-bold text-uppercase m-0"
+          className="btn btn-outline-secondary w-100 rounded-4 py-1 fw-bold text-uppercase m-0"
           onClick={() => handleLogOut()}
         >
           Log out
@@ -95,8 +95,8 @@ export default function Sidebar() {
       </Offcanvas>
       {/* Sidebar */}
       <div className="ps-0 m-none fix-sidebar py-3 pe-3">
-        <div className="sidebar-nav mb-3">
-          <div className="pb-4 mb-4">
+        <div className="sidebar-nav mb-2">
+          <div className="pb-3">
             <Link
               to="/"
               className="text-decoration-none"
@@ -112,10 +112,7 @@ export default function Sidebar() {
           </div>
           <SidebarNav />
         </div>
-        <div className="sidebar-nav mb-3" style={{ paddingTop: 20 }}>
-          <p style={{ marginLeft: 20, marginBottom: 0, color: "#6c757d" }}>
-            - &nbsp; - &nbsp; - &nbsp; - &nbsp; -
-          </p>
+        <div className="sidebar-nav">
           <SidebarSecondaryNav />
           <SignInButton />
         </div>

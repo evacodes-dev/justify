@@ -17,20 +17,17 @@ function MarketMovers() {
         <Link
           key={demo.id}
           to={`/trade/m/${demo.id}`}
-          className="p-3 border-bottom d-flex align-items-center text-dark text-decoration-none trending-item"
+          className="p-3 border-bottom d-block text-dark text-decoration-none trending-item"
         >
-          <div>
-            <div className="text-muted fw-light d-flex align-items-center">
-              <small>@{demo.author ?? 'justify'}</small>
-              <span className="mx-1 material-icons md-3">circle</span>
-              <small>{api.resolved ? 'Resolved' : 'Live'}</small>
-            </div>
-            <p className="fw-bold text-white mb-0 pe-3">{demo.question}</p>
-            <small className="text-muted">{Math.round(api.priceYes * 100)}% YES · ${api.volume.toFixed(2)} Vol</small>
-            <br />
-            <span className="text-primary">{demo.tags}</span>
+          <div className="d-flex align-items-center mb-2">
+            <img src={demo.thumb} className="rounded-3 flex-shrink-0 me-2" alt="" style={{ width: 28, height: 28, objectFit: 'cover' }} />
+            <small className="text-muted fw-light text-truncate">@{demo.author ?? 'justify'}</small>
+            <span className="mx-1 material-icons md-3 text-muted">circle</span>
+            <small className="text-muted fw-light flex-shrink-0">{api.resolved ? 'Resolved' : 'Live'}</small>
           </div>
-          <img src={demo.thumb} className="img-fluid rounded-4 ms-auto" alt="market" style={{ maxWidth: 80 }} />
+          <p className="fw-bold text-white mb-1">{demo.question}</p>
+          <small className="text-muted d-block">{Math.round(api.priceYes * 100)}% YES · ${api.volume.toFixed(2)} Vol</small>
+          <span className="text-primary small">{demo.tags}</span>
         </Link>
       ))}
       <Link to="/market" className="text-decoration-none text-primary">

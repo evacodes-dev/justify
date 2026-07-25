@@ -383,3 +383,42 @@ export interface Proof {
 export function getProof() {
   return apiFetch<Proof>('/api/proof')
 }
+
+// ---- Trading agents ----
+// `onchainScore` / `feedbackCount` come from the ERC-8004 Reputation Registry: the last score
+// somebody PAID for is public on-chain, while a freshly computed one costs $0.005 over x402.
+export interface Agent {
+  id: string
+  name: string
+  address: string
+  strategy: string
+  preset: string
+  owner: string
+  humanBacked: boolean
+  record: { w: number; l: number }
+  budgetUsdc: number
+  spentUsdc: number
+  active: boolean
+  public: boolean
+  erc8004Id: string | null
+  onchainScore?: number | null
+  feedbackCount?: number
+}
+
+export function getAgents(owner?: string) {
+  return apiFetch<{ agents: Agent[] }>(`/api/agents${owner ? `?owner=${owner}` : ''}`)
+}
+
+export function createAgent(input: { name: string; preset: string; owner: string; budgetUsdc?: number }) {
+  return apiFetch<{ agent: Agent; fundTx: string }>('/api/agents', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function publishAgent(id: string, body: { owner: string; rp_id?: string; idkitResponse?: unknown }) {
+  return apiFetch<{ agent: Agent; alreadyPublic?: boolean }>(`/api/agents/${id}/publish`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}

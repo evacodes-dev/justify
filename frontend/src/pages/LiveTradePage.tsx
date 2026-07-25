@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import TradeContent from '../components/trade/TradeContent'
+import { priceRuleOf } from '../lib/markets'
 import ResolutionBlock from '../components/trade/ResolutionBlock'
 import ChainlinkBadge from '../components/market/ChainlinkBadge'
 import RightSidebar from '../components/layout/RightSidebar'
@@ -70,7 +71,11 @@ export default function LiveTradePage() {
           <Link to="/market" className="material-icons text-white text-decoration-none m-none me-3">arrow_back</Link>
           <p className="ms-2 mb-0 fw-bold text-body fs-6">Market #{demo.id}</p>
         </div>
-        <div className="px-lg-3 pt-2"><ChainlinkBadge question={demo.question} /></div>
+        {!api.resolved && (
+          <div className="px-lg-3 pt-2">
+            <ChainlinkBadge question={demo.question} rule={priceRuleOf(api)} />
+          </div>
+        )}
         <ResolutionBlock market={api} />
         <TradeContent market={market} live={{ market: api }} />
       </main>

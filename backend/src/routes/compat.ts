@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { parseEventLogs } from "viem";
 import { config, toUsdc, txUrl } from "../config.js";
 import { backendSigner, publicClient, arc } from "../chain.js";
-import { erc20Abi, registryAbi, settlerAbi } from "../abis.js";
+import { erc20Abi, registryAbi, settlerAbi, aggregatorAbi } from "../abis.js";
 import { isAddr, verifyWorldProof, ensureGas } from "../util.js";
 import { requireAuth } from "../auth.js";
 import { db, kv, UPLOADS_DIR, type AgentRow, type FeedItem, type Approval } from "../store.js";
@@ -253,12 +253,37 @@ export async function compatRoutes(app: FastifyInstance) {
   });
 
   // live Chainlink Data Feed price for an asset — verifiable on Etherscan
+  // Quote the feed that ACTUALLY decides these markets — the aggregator on the settlement
+  // chain that CtfResolver.resolveByPrice reads in-contract. Showing a price from any other
+  // chain would be a number that decided nothing.
   app.get<{ Params: { asset: string } }>("/api/chainlink/:asset", async (req, reply) => {
     const asset = String(req.params.asset).toUpperCase();
+    const onchain = config.onchainFeeds[asset];
+    if (onchain) {
+      try {
+        const [round, decimals] = await Promise.all([
+          publicClient.readContract({ address: onchain, abi: aggregatorAbi, functionName: "latestRoundData" }) as Promise<readonly [bigint, bigint, bigint, bigint, bigint]>,
+          publicClient.readContract({ address: onchain, abi: aggregatorAbi, functionName: "decimals" }) as Promise<number>,
+        ]);
+        return {
+          asset,
+          price: Number(round[1]) / 10 ** Number(decimals),
+          feed: onchain,
+          updatedAt: Number(round[3]),
+          network: config.network === "base-sepolia" ? "Base Sepolia" : config.network,
+          explorer: `${config.explorer}/address/${onchain}#readContract`,
+          settlementChain: true,
+        };
+      } catch (e) {
+        req.log.error(`on-chain feed read failed for ${asset}: ${(e as Error).message}`);
+      }
+    }
+    // No aggregator configured on the settlement chain — fall back to the off-chain read and
+    // say plainly which chain it came from.
     if (!hasFeed(asset)) return reply.code(404).send({ error: "no feed" });
     const p = await readChainlinkPrice(asset).catch(() => null);
     if (!p) return reply.code(502).send({ error: "feed read failed" });
-    return { asset, price: p.price, feed: p.feed, updatedAt: p.updatedAt, network: "Ethereum Sepolia", explorer: `https://sepolia.etherscan.io/address/${p.feed}#readContract` };
+    return { asset, price: p.price, feed: p.feed, updatedAt: p.updatedAt, network: "Ethereum Sepolia", explorer: `https://sepolia.etherscan.io/address/${p.feed}#readContract`, settlementChain: false };
   });
 
   // creators (real users) for the feed / people lists
@@ -507,7 +532,12 @@ export async function compatRoutes(app: FastifyInstance) {
     if (!config.features.agents) return { agents: [] }; // feature-flagged off for MVP
     const owner = String(req.query.owner ?? "").toLowerCase();
     const visible = db.agents.all().filter((a) => isPublicAgent(a) || (owner && a.ownerAddress.toLowerCase() === owner));
-    return { agents: visible.map(toPublicAgent) };
+    // The last PAID score of each agent is public on-chain in the ERC-8004 registry — surface
+    // it here so a leaderboard can rank agents without anyone paying for a fresh computation.
+    const onchain = await onchainReputation();
+    return {
+      agents: visible.map((a) => ({ ...toPublicAgent(a), ...(onchain.get(a.erc8004Id ?? "") ?? {}) })),
+    };
   });
   app.post<{ Body: any }>("/api/agents", async (req, reply) => {
     if (!config.features.agents) return reply.code(403).send({ error: "agents are disabled" });
@@ -636,6 +666,38 @@ export async function compatRoutes(app: FastifyInstance) {
 }
 
 const bundleCache = new Map<string, unknown>();
+
+// ERC-8004 summaries live on Ethereum mainnet; cache them so the agents list does not make an
+// L1 call per render.
+let repCache: { at: number; map: Map<string, { onchainScore: number | null; feedbackCount: number }> } | null = null;
+
+async function onchainReputation() {
+  if (repCache !== null && Date.now() - repCache.at < 60_000) return repCache.map;
+  const map = new Map<string, { onchainScore: number | null; feedbackCount: number }>();
+  const ids = db.agents.filter((a) => Boolean(a.erc8004Id)).map((a) => a.erc8004Id!);
+  const clientPk = process.env.REPUTATION_CLIENT_PK;
+  if (ids.length > 0 && clientPk) {
+    try {
+      const [{ readSummary }, { privateKeyToAccount }] = await Promise.all([
+        import("../erc8004.js"),
+        import("viem/accounts"),
+      ]);
+      const client = privateKeyToAccount(
+        (clientPk.startsWith("0x") ? clientPk : `0x${clientPk}`) as `0x${string}`,
+      ).address;
+      await Promise.all(
+        ids.map(async (id) => {
+          const s = await readSummary(id, [client]).catch(() => null);
+          if (s !== null) map.set(id, { onchainScore: s.count > 0 ? s.value : null, feedbackCount: s.count });
+        }),
+      );
+    } catch {
+      // registry unreachable — the list still renders, just without scores
+    }
+  }
+  repCache = { at: Date.now(), map };
+  return map;
+}
 
 const REASON_QUERY = `query Reason($id: ID!) { market(id: $id) { resolutionReason } }`;
 const reasonCache = new Map<number, string>();
