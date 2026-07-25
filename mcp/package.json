@@ -1,0 +1,22 @@
+{
+  "name": "justify-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for AI-resolved prediction markets indexed by The Graph — market analysis, PnL leaderboards, x402-paid agent reputation and 0G resolution evidence.",
+  "type": "module",
+  "bin": { "justify-mcp": "./index.mjs" },
+  "main": "./index.mjs",
+  "files": ["index.mjs", "README.md", "SKILL.md"],
+  "engines": { "node": ">=18" },
+  "license": "MIT",
+  "keywords": ["mcp", "thegraph", "subgraph", "x402", "prediction-markets", "ai-agents", "0g"],
+  "peerDependencies": {
+    "@x402/evm": "^2.19.0",
+    "@x402/fetch": "^2.19.0",
+    "viem": "^2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@x402/evm": { "optional": true },
+    "@x402/fetch": { "optional": true },
+    "viem": { "optional": true }
+  }
+}

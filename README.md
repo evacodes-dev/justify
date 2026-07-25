@@ -71,6 +71,12 @@ deterministically on-chain (`CtfResolver.resolveByPrice`).
 - **x402**: the reputation endpoint is paywalled with the same x402 rails The Graph's gateway
   uses for pay-per-query subgraphs — one funded wallet pays for data on one side and buys
   reputation on the other.
+- **MCP server** ([`mcp/`](mcp/)): `justify-mcp` — reusable, dependency-free MCP tooling that
+  lets *any* agent reason about these markets: `get_market_context` answers "is this price
+  informative?" rather than returning a number, `get_resolution_evidence` surfaces the AI
+  oracle's bundle, and `get_agent_reputation` is **paid over x402** (settles $0.005 USDC, or
+  returns the payment requirements when no key is configured). Ships with a README and
+  SKILL.md.
 - **Nuthatch** ([`nuthatch/`](nuthatch/)): the self-hosted indexer runs against our contract
   on Base Sepolia — undocumented territory (only mainnets are built in). We Sourcify-verified
   the registry and hand-tuned the nest (`chain_id = 84532`, custom RPC, vendored ABI);
@@ -141,6 +147,7 @@ backend/    Fastify: resolution agent (0G Compute), justification bundles (0G St
             x402-gated reputation API, ERC-8004 reporting, trading-agent loop
 subgraph/   The Graph subgraph (Base Sepolia) — see subgraph/README.md
 contracts/  Foundry: MarketRegistry, CtfResolver, OptimisticSettler, JustifyAttestations
+mcp/        justify-mcp — MCP server exposing the markets, evidence and x402-paid reputation
 nuthatch/   Nuthatch nest: our registry as a local SQL/MCP index (Base Sepolia, undocumented)
 docs/       specs & build notes (docs/tz/TZ_GRAPH_0G.md is the phase-2 spec + status log)
 ```

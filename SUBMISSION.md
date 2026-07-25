@@ -42,7 +42,12 @@ Tracks: **Best AI Use Case** (+ Continuity), **Best Composable/Standardized** (4
 - ✅ **Nuthatch on Base Sepolia (undocumented)**: Sourcify-verified our registry, hand-tuned
   the nest (`nuthatch/`), `nuthatch sql` returns live markets. Second, local SQL/MCP data
   path for agents.
-- Products composed: **Subgraph + x402 + Nuthatch** (+ Subgraph data in every AI bundle).
+- ✅ **MCP server (`mcp/`)** — targets **Best AI Tooling**: reusable, zero-dependency stdio MCP
+  server over the live subgraph. Six tools; `get_market_context` returns a judgement on whether
+  a price is informative (thin market / concentration / late flow), `get_agent_reputation` is
+  **x402-paid** and settles USDC autonomously. Ships README + SKILL.md; `node test-client.mjs`
+  exercises every tool against live data.
+- Products composed: **Subgraph + x402 + Nuthatch + MCP** (+ Subgraph data in every AI bundle).
 
 ## 0G prize — checklist + proof
 
