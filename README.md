@@ -71,7 +71,9 @@ deterministically on-chain (`CtfResolver.resolveByPrice`).
 - **x402**: the reputation endpoint is paywalled with the same x402 rails The Graph's gateway
   uses for pay-per-query subgraphs — one funded wallet pays for data on one side and buys
   reputation on the other.
-- **MCP server** ([`mcp/`](mcp/)): `justify-mcp` — reusable, dependency-free MCP tooling that
+- **MCP server** ([`mcp/`](mcp/)): `justify-mcp` — reusable, dependency-free MCP tooling,
+  complementary to the hosted Subgraph MCP (that one is the universal GraphQL layer over any
+  subgraph; this one is the domain layer over these markets) — it
   lets *any* agent reason about these markets: `get_market_context` answers "is this price
   informative?" rather than returning a number, `get_resolution_evidence` surfaces the AI
   oracle's bundle, and `get_agent_reputation` is **paid over x402** (settles $0.005 USDC, or
