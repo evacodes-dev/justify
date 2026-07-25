@@ -101,7 +101,11 @@ export async function executeBuy(agent: AgentRow, market: Market, outcome: "YES"
       address: config.usdc, abi: erc20Abi, functionName: "allowance", args: [account.address, fpmm],
     })) as bigint;
     if (allowance < amt) {
-      const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [fpmm, amt], account, chain: arc });
+      // Approve the whole remaining budget, not the exact amount: an exact approve is spent by
+      // the first buy, and the next tick's read-then-approve raced it into
+      // "transfer amount exceeds allowance" reverts.
+      const headroom = toUsdc(Math.max(agent.budgetUsdc - agent.spentUsdc, amount));
+      const ah = await wallet.writeContract({ address: config.usdc, abi: erc20Abi, functionName: "approve", args: [fpmm, headroom], account, chain: arc });
       await publicClient.waitForTransactionReceipt({ hash: ah });
     }
     // quote then buy with 2% slippage bound (audited Gnosis FPMM)

@@ -1,0 +1,146 @@
+specVersion: 1.0.0
+description: Justify — AI-resolved prediction markets (Gnosis CTF/FPMM) on Base Sepolia
+repository: https://github.com/justify-markets/justify
+schema:
+  file: ./schema.graphql
+indexerHints:
+  prune: auto
+dataSources:
+  - kind: ethereum
+    name: MarketRegistry
+    network: base-sepolia
+    source:
+      address: "0x90C69EdcB18F238594C974EA2a60067534622236"
+      abi: MarketRegistry
+      startBlock: 44597900
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/registry.ts
+      entities:
+        - Market
+        - Creator
+        - Global
+      abis:
+        - name: MarketRegistry
+          file: ./abis/MarketRegistry.json
+        - name: ConditionalTokens
+          file: ./abis/ConditionalTokens.json
+      eventHandlers:
+        - event: MarketCreated(indexed uint256,address,bytes32,indexed address,string,uint64)
+          handler: handleMarketCreated
+        - event: CreatorRegistered(indexed address)
+          handler: handleCreatorRegistered
+
+  - kind: ethereum
+    name: OptimisticSettler
+    network: base-sepolia
+    source:
+      address: "0xB35A5ee43f6B5770B56AF22064Fc0692BdFe134c"
+      abi: OptimisticSettler
+      startBlock: 44597900
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/settler.ts
+      entities:
+        - Market
+        - Resolution
+        - Global
+      abis:
+        - name: OptimisticSettler
+          file: ./abis/OptimisticSettler.json
+      eventHandlers:
+        - event: Proposed(indexed uint256,uint8,indexed address,string)
+          handler: handleProposed
+        - event: Challenged(indexed uint256,uint8,indexed address,bytes32,uint256)
+          handler: handleChallenged
+        - event: Finalized(indexed uint256,uint8,bool)
+          handler: handleFinalized
+        - event: ChallengeDisputed(indexed uint256,bytes32)
+          handler: handleChallengeDisputed
+        - event: ResolveFailed(indexed uint256,uint8)
+          handler: handleResolveFailed
+
+  - kind: ethereum
+    name: CtfResolver
+    network: base-sepolia
+    source:
+      address: "0xB66741Fe9da3D70A986BF7A0646b6E19dcFDBdac"
+      abi: CtfResolver
+      startBlock: 44597900
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/resolver.ts
+      entities:
+        - Market
+        - Resolution
+      abis:
+        - name: CtfResolver
+          file: ./abis/CtfResolver.json
+      eventHandlers:
+        - event: Resolved(indexed uint256,uint8,string)
+          handler: handleResolved
+        - event: PriceResolved(indexed uint256,address,int256,int256,uint8)
+          handler: handlePriceResolved
+
+  - kind: ethereum
+    name: ConditionalTokens
+    network: base-sepolia
+    source:
+      address: "0x73FA4E26d22b4e2f1B68dD74b56bca62bDAdfbd7"
+      abi: ConditionalTokens
+      startBlock: 44597900
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/ctf.ts
+      entities:
+        - Market
+        - Position
+        - Trader
+        - Global
+      abis:
+        - name: ConditionalTokens
+          file: ./abis/ConditionalTokens.json
+      eventHandlers:
+        - event: ConditionResolution(indexed bytes32,indexed address,indexed bytes32,uint256,uint256[])
+          handler: handleConditionResolution
+        - event: PayoutRedemption(indexed address,indexed address,indexed bytes32,bytes32,uint256[],uint256)
+          handler: handlePayoutRedemption
+
+templates:
+  - kind: ethereum
+    name: FixedProductMarketMaker
+    network: base-sepolia
+    source:
+      abi: FixedProductMarketMaker
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/fpmm.ts
+      entities:
+        - Market
+        - Trade
+        - Position
+        - Trader
+        - PricePoint
+        - Global
+      abis:
+        - name: FixedProductMarketMaker
+          file: ./abis/FixedProductMarketMaker.json
+      eventHandlers:
+        - event: FPMMBuy(indexed address,uint256,uint256,indexed uint256,uint256)
+          handler: handleBuy
+        - event: FPMMSell(indexed address,uint256,uint256,indexed uint256,uint256)
+          handler: handleSell
+        - event: FPMMFundingAdded(indexed address,uint256[],uint256)
+          handler: handleFundingAdded
+        - event: FPMMFundingRemoved(indexed address,uint256[],uint256,uint256)
+          handler: handleFundingRemoved

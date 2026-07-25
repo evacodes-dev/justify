@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import RightSidebar from '../components/layout/RightSidebar'
 import MarketCard from '../components/market/MarketCard'
 import { useWallet } from '../hooks/useWallet'
-import { createMarket, getMe, type PriceConfig } from '../lib/api'
+import { createMarket, getMe, uploadImage, type PriceConfig } from '../lib/api'
 import { apiMarketToDemo, ensureConfig, toUiMarket, type ApiMarket } from '../lib/markets'
 import { createMarketSelf } from '../lib/arc'
+import { fileToResizedDataUrl } from '../lib/upload'
 
 const CATEGORIES = ['crypto', 'macro', 'politics', 'sports', 'general']
 const ASSETS = ['ETH', 'BTC', 'LINK'] as const
@@ -61,6 +62,21 @@ export default function CreatePage() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [result, setResult] = useState<{ id: number; address: string; explorer: string } | null>(null)
   const [err, setErr] = useState('')
+  const [image, setImage] = useState('')
+  const [imgUploading, setImgUploading] = useState(false)
+  const imgRef = useRef<HTMLInputElement>(null)
+
+  const pickImage = async (file?: File) => {
+    if (!file || !address) return
+    setImgUploading(true)
+    try {
+      const dataUrl = await fileToResizedDataUrl(file, 640)
+      const { url } = await uploadImage(address, dataUrl)
+      setImage(url)
+    } catch (e) {
+      setErr((e as Error).message || 'Image upload failed')
+    } finally { setImgUploading(false) }
+  }
 
   useEffect(() => {
     if (!address) { setCreator(false); return }
@@ -101,13 +117,13 @@ export default function CreatePage() {
     const fake: ApiMarket = {
       id: -1, address: '0x0000000000000000000000000000000000000000',
       question: finalQuestion || (mode === 'price' ? `Will ${asset} be ${comparator} $… on …?` : 'Your market question…'),
-      metadataURI: JSON.stringify({ category }),
+      metadataURI: JSON.stringify({ category, image }),
       priceYes: 0.5, volume: 0, resolved: false, closeTime: closeDate ? Math.floor(closeDate.getTime() / 1000) : 0,
       creator: address ?? '', creatorName: myName || 'you', likes: 0,
       conditionId: null, posYes: null, posNo: null,
     }
     return toUiMarket(apiMarketToDemo(fake), { yesPct: 50, total: 0, resolved: false, likes: 0 })
-  }, [finalQuestion, category, closeDate, address, myName, mode, asset, comparator])
+  }, [finalQuestion, category, closeDate, address, myName, mode, asset, comparator, image])
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -123,7 +139,7 @@ export default function CreatePage() {
       if (createMode === 'self') {
         // creator signs + funds from their own wallet (metadata shape mirrors the backend's)
         const metadataURI = JSON.stringify({
-          category, description, criteria: description, image: '',
+          category, description, criteria: description, image,
           price: priceConfig ?? null, countries: [], restricted: false,
         })
         const wc = await getChainWalletClient()
@@ -133,12 +149,12 @@ export default function CreatePage() {
       } else {
         const r = await createMarket({
           question: finalQuestion, description, category,
-          closeTimeTs: closeTimeSec, priceConfig, creator: address,
+          closeTimeTs: closeTimeSec, priceConfig, creator: address, image,
         })
         setResult({ id: r.id, address: r.address, explorer: r.explorer })
       }
       setPhase('done')
-      setQuestion(''); setCriteria(''); setThreshold('')
+      setQuestion(''); setCriteria(''); setThreshold(''); setImage('')
     } catch (e: any) {
       setErr(e?.shortMessage || e?.message || String(e)); setPhase('error')
     }
@@ -264,6 +280,22 @@ export default function CreatePage() {
                   <p className={`small mb-3 ${closeValid ? 'text-muted' : 'text-warning'}`}>
                     {closeValid ? `Closes ${closeHuman} (your local time)` : 'Close time must be in the future.'}
                   </p>
+
+                  <div className="d-flex align-items-center gap-3 mb-3">
+                    <div className="rounded-4 overflow-hidden flex-shrink-0" style={{ width: 64, height: 64, background: 'rgba(255,255,255,.06)' }}>
+                      {image
+                        ? <img src={image} alt="market" style={{ width: 64, height: 64, objectFit: 'cover' }} />
+                        : <div className="d-flex align-items-center justify-content-center h-100"><span className="material-icons text-muted">image</span></div>}
+                    </div>
+                    <div>
+                      <input ref={imgRef} type="file" accept="image/*" className="d-none" onChange={(e) => pickImage(e.target.files?.[0])} />
+                      <button type="button" className="btn btn-outline-secondary btn-sm rounded-4" disabled={imgUploading} onClick={() => imgRef.current?.click()}>
+                        {imgUploading ? 'Uploading…' : image ? 'Change picture' : 'Add market picture'}
+                      </button>
+                      {image && <button type="button" className="btn btn-link btn-sm text-muted ms-1" onClick={() => setImage('')}>Remove</button>}
+                      <div className="text-muted small mt-1">Optional — replaces the auto thumbnail</div>
+                    </div>
+                  </div>
 
                   {createMode === 'self' && (
                     <>

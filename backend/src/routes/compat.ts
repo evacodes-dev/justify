@@ -6,11 +6,16 @@ import { backendSigner, publicClient, arc } from "../chain.js";
 import { erc20Abi, registryAbi, settlerAbi } from "../abis.js";
 import { isAddr, verifyWorldProof, ensureGas } from "../util.js";
 import { requireAuth } from "../auth.js";
-import { db, kv, type AgentRow, type FeedItem, type Approval } from "../store.js";
+import { db, kv, UPLOADS_DIR, type AgentRow, type FeedItem, type Approval } from "../store.js";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { signRequest } from "@worldcoin/idkit-core/signing";
 import { createAgentInternal } from "./agents.js";
 import { tickAgent, executeBuy } from "../agent-loop.js";
 import { hasFeed, readChainlinkPrice } from "../chainlink.js";
+import { bundleUriFromReason } from "../justification.js";
+import { downloadJson } from "../zg-storage.js";
 
 // Compatibility layer: serves the `/api/*` contract the SPA front-end already codes
 // against (showcase shapes), backed by the REAL FPMM contracts + agent loop. Lets the
@@ -78,13 +83,17 @@ export async function compatRoutes(app: FastifyInstance) {
 
   // markets for the on-chain layer (FPMM addresses + live price)
   const { likesOf, commentsOf, recentCommentsOf } = await import("./social.js");
+  // Optional demo allowlist: VISIBLE_MARKET_IDS=10,13 shows only those on the board. Test and
+  // half-finished markets stay reachable by direct link and keep resolving normally — this only
+  // curates the listing. Unset shows everything.
   app.get("/api/markets", async () => ({
-    markets: db.markets.all().sort((a, b) => b.createdAt - a.createdAt).map((m) => ({
+    markets: db.markets.all().filter((m) => isVisibleMarket(m.id)).sort((a, b) => b.createdAt - a.createdAt).map((m) => ({
       id: m.id, address: m.address, question: m.question, metadataURI: m.metadataURI,
       priceYes: m.priceYes, volume: m.volume, resolved: m.resolved, outcome: m.outcome, closeTime: m.closeTime, oracle: m.oracle,
       creator: m.creator, creatorName: creatorNameOf(m.id, m.creator), createdAt: m.createdAt,
       creatorVerified: !!creatorUserOf(m.id, m.creator)?.verified,
       creatorAvatar: creatorUserOf(m.id, m.creator)?.avatar || null,
+      creatorDisplayName: creatorUserOf(m.id, m.creator)?.displayName || null,
       likes: likesOf(m.id).length, comments: commentsOf(m.id).length,
       recentComments: recentCommentsOf(m.id, 3),
       // Path-B (Gnosis CTF) extras — null on the legacy stack
@@ -187,6 +196,29 @@ export async function compatRoutes(app: FastifyInstance) {
     return { success: true, alreadyVerified: !!existing?.verified };
   });
 
+  // Second World ID step: the identity check (document credential). Sits on top of the
+  // humanity verification — both must pass before Create Market unlocks. Same dev-bypass
+  // policy as verify-proof (ALLOW_DEV_VERIFY=false demands a real proof).
+  app.post<{ Body: any }>("/api/verify-identity", async (req, reply) => {
+    const { rp_id, idkitResponse, walletAddress } = (req.body ?? {}) as any;
+    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress ?? "")) return reply.code(400).send({ error: "bad walletAddress" });
+    const existing = db.users.find((u) => u.address.toLowerCase() === walletAddress.toLowerCase());
+    if (!existing?.verified)
+      return reply.code(409).send({ error: "verify humanity first — the identity check is step two" });
+    if (existing.identityVerified) return { success: true, alreadyVerified: true };
+    if (!idkitResponse && process.env.ALLOW_DEV_VERIFY === "false")
+      return reply.code(400).send({ error: "World ID identity proof required (dev bypass disabled)" });
+    if (idkitResponse && rp_id) {
+      try {
+        await verifyWorldProof(rp_id, idkitResponse);
+      } catch (e: any) {
+        return reply.code(400).send({ error: e.message, portal: e.portal ?? {} });
+      }
+    }
+    db.users.put({ ...existing, identityVerified: true });
+    return { success: true };
+  });
+
   // Country codes may arrive as ISO alpha-2 (UI dropdown: "US") or alpha-3 ("USA").
   // Canonicalize everything to alpha-2 so the gate matches regardless of source.
   const ALPHA3: Record<string, string> = {
@@ -234,7 +266,7 @@ export async function compatRoutes(app: FastifyInstance) {
     const users = db.users.filter((u) => !!u.creator);
     return {
       creators: users.map((u) => ({
-        id: u.address.toLowerCase(), name: u.name, handle: "@" + u.name, address: u.address,
+        id: u.address.toLowerCase(), name: u.name, displayName: u.displayName || "", handle: "@" + u.name, address: u.address,
         avatar: u.avatar || "/img/images.jpeg", bio: u.bio || "", verified: u.verified, creator: !!u.creator,
         followers: followersOf(u.address.toLowerCase()).length,
         markets: Object.values(submitters()).filter((a) => a.toLowerCase() === u.address.toLowerCase()).length,
@@ -321,7 +353,7 @@ export async function compatRoutes(app: FastifyInstance) {
   // ONLY the checkmark + market-creation gate, not a requirement to set a name/bio.
   // Upserts the user record (verified stays false until they actually verify).
   app.post<{ Body: any }>("/api/profile", async (req, reply) => {
-    const { address, name, avatar, bio, country } = (req.body ?? {}) as any;
+    const { address, name, displayName, avatar, bio, country } = (req.body ?? {}) as any;
     if (!/^0x[a-fA-F0-9]{40}$/.test(address ?? "")) return reply.code(400).send({ error: "bad address" });
     // identity-asserting write: only the signed-in owner of this address may edit it
     if (!(await requireAuth(req, reply, address))) return;
@@ -331,17 +363,48 @@ export async function compatRoutes(app: FastifyInstance) {
     // name uniqueness across everyone else
     if (cleanName && db.users.find((x) => x.name === cleanName && x.address.toLowerCase() !== addrLc))
       return reply.code(409).send({ error: "name taken" });
+    // displayName is free text (spaces/unicode ok), not unique
+    const cleanDisplay = displayName != null ? String(displayName).replace(/\s+/g, " ").trim().slice(0, 40) : u?.displayName;
     const cleanBio = bio != null ? String(bio).slice(0, 280) : u?.bio;
     const cleanAvatar = avatar != null ? String(avatar).slice(0, 2048) : u?.avatar; // URL, not a data blob
     db.users.put({
       id: addrLc, address: address,
       name: cleanName || u?.name || addrLc.slice(0, 8),
+      displayName: cleanDisplay,
       verified: u?.verified ?? false, creator: u?.creator, humanId: u?.humanId ?? addrLc,
       avatar: cleanAvatar, bio: cleanBio,
       country: country ? normCountry(country) : u?.country,
       createdAt: u?.createdAt ?? Date.now(),
     });
     return { ok: true, user: db.users.get(addrLc) };
+  });
+
+  // ── image upload (avatars, market pictures) ──
+  // Signed-in users POST a resized data-URL; we store it and hand back a /api/uploads URL.
+  app.post<{ Body: any }>("/api/upload", async (req, reply) => {
+    const { address, dataUrl } = (req.body ?? {}) as { address?: string; dataUrl?: string };
+    if (!isAddr(address)) return reply.code(400).send({ error: "bad address" });
+    if (!(await requireAuth(req, reply, address))) return;
+    const m = /^data:image\/(png|jpe?g|webp|gif);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ""));
+    if (!m) return reply.code(400).send({ error: "expected a base64 image data URL (png/jpg/webp/gif)" });
+    const buf = Buffer.from(m[2], "base64");
+    if (buf.length > 3_000_000) return reply.code(413).send({ error: "image too large (max 3MB — resize client-side)" });
+    const ext = m[1] === "jpeg" ? "jpg" : m[1];
+    const file = `${randomUUID()}.${ext}`;
+    writeFileSync(join(UPLOADS_DIR, file), buf);
+    return { url: `/api/uploads/${file}` };
+  });
+
+  const MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", webp: "image/webp", gif: "image/gif" };
+  app.get<{ Params: { file: string } }>("/api/uploads/:file", async (req, reply) => {
+    const file = String(req.params.file);
+    if (!/^[a-f0-9-]+\.(png|jpg|webp|gif)$/i.test(file)) return reply.code(400).send({ error: "bad file" });
+    const p = join(UPLOADS_DIR, file);
+    if (!existsSync(p)) return reply.code(404).send({ error: "not found" });
+    const ext = file.split(".").pop()!.toLowerCase();
+    reply.header("Content-Type", MIME[ext] ?? "application/octet-stream");
+    reply.header("Cache-Control", "public, max-age=31536000, immutable");
+    return reply.send(readFileSync(p));
   });
 
   // create a market (backend is a registered creator; funds the initial liquidity)
@@ -353,10 +416,15 @@ export async function compatRoutes(app: FastifyInstance) {
     if (config.createMode === "self") {
       return reply.code(409).send({ error: "self-create mode is on: create the market from your wallet (hard-refresh the page if you don't see the wallet flow)" });
     }
-    // product rule: creators are granted via the admin API only (World ID = just a checkmark)
-    if (config.features.creatorViaAdmin) {
+    // Two-step World ID gate: humanity (checkmark) AND the identity check must both be
+    // passed before a market can be created — mirrors the disabled Create Market button.
+    {
       const cu = db.users.find((x) => x.address.toLowerCase() === String(creator ?? "").toLowerCase());
-      if (!cu?.creator) return reply.code(403).send({ error: "creator role required (granted by admin)" });
+      if (!cu?.verified) return reply.code(403).send({ error: "human verification required (World ID)" });
+      if (!cu?.identityVerified) return reply.code(403).send({ error: "identity check required (World ID)" });
+      // product rule: creators are granted via the admin API only
+      if (config.features.creatorViaAdmin && !cu?.creator)
+        return reply.code(403).send({ error: "creator role required (granted by admin)" });
     }
     // per-creator market cap (beta): a creator may open only N markets
     const creatorLc = String(creator ?? "").toLowerCase();
@@ -523,6 +591,55 @@ export async function compatRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/api/resolution/:id", async (req, reply) => {
     const m = db.markets.get(Number(req.params.id));
     if (!m || !m.resolved) return reply.code(404).send({ error: "not resolved" });
-    return { id: m.id, verdict: m.outcome === 1 ? "YES" : m.outcome === 0 ? "NO" : "INVALID", rationale: m.reason ?? "", oracle: m.oracle ?? "claude", model: m.oracle === "chainlink" ? "Chainlink Data Feed" : "claude-sonnet-4-6", at: new Date(m.createdAt).toISOString().slice(0, 10) };
+    const reason = m.reason ?? "";
+    const bundleUri = bundleUriFromReason(reason);
+    return {
+      id: m.id,
+      verdict: m.outcome === 1 ? "YES" : m.outcome === 0 ? "NO" : "INVALID",
+      rationale: reason,
+      oracle: m.oracle ?? "claude",
+      model: m.oracle === "chainlink" ? "Chainlink Data Feed" : m.oracle === "0g" ? "0G Compute" : "claude-sonnet-4-6",
+      // Present when the verdict published a justification bundle to 0G Storage.
+      bundleUri,
+      bundleUrl: bundleUri === null ? null : `/api/justification/${bundleUri.slice("0g://".length)}`,
+      at: new Date(m.createdAt).toISOString().slice(0, 10),
+    };
+  });
+
+  // Justification bundle behind an AI resolution, fetched from 0G Storage by Merkle root. The
+  // SPA cannot read 0G Storage directly (the SDK is Node-only), so it comes through here.
+  // Content-addressed, hence immutable — safe to cache hard.
+  app.get<{ Params: { root: string } }>("/api/justification/:root", async (req, reply) => {
+    const root = req.params.root;
+    if (!/^0x[0-9a-fA-F]{64}$/.test(root)) return reply.code(400).send({ error: "bad root" });
+
+    const cached = bundleCache.get(root);
+    if (cached !== undefined) {
+      reply.header("cache-control", "public, max-age=31536000, immutable");
+      return cached;
+    }
+    try {
+      const bundle = await downloadJson(root);
+      bundleCache.set(root, bundle);
+      reply.header("cache-control", "public, max-age=31536000, immutable");
+      return bundle;
+    } catch (e) {
+      return reply.code(502).send({ error: "0g storage unavailable", detail: (e as Error).message });
+    }
   });
 }
+
+const bundleCache = new Map<string, unknown>();
+
+const VISIBLE_MARKET_IDS: Set<number> | null = (() => {
+  const raw = (process.env.VISIBLE_MARKET_IDS ?? "").trim();
+  if (raw === "") return null;
+  const ids = raw
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isInteger(n));
+  return ids.length > 0 ? new Set(ids) : null;
+})();
+
+const isVisibleMarket = (id: number): boolean =>
+  VISIBLE_MARKET_IDS === null || VISIBLE_MARKET_IDS.has(id);

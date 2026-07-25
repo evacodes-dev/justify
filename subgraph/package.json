@@ -1,0 +1,16 @@
+{
+  "name": "justify-subgraph",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Subgraph for Justify — AI-resolved prediction markets on Base Sepolia",
+  "scripts": {
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "deploy": "graph deploy justify-markets",
+    "auth": "graph auth"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "0.98.1",
+    "@graphprotocol/graph-ts": "0.38.1"
+  }
+}

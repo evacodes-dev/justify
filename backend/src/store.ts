@@ -7,6 +7,11 @@ import { fileURLToPath } from "node:url";
 const dataDir = join(dirname(fileURLToPath(import.meta.url)), "../data");
 if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
+// user-uploaded images (avatars, market pictures). Served back via GET /api/uploads/:file.
+const uploadsDir = join(dirname(fileURLToPath(import.meta.url)), "../uploads");
+if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+export const UPLOADS_DIR = uploadsDir;
+
 // Optional durable write-through (BE12). When a Postgres backend is wired (DATABASE_URL),
 // every table/kv write is mirrored to Postgres as a JSONB blob; the local JSON file stays
 // the hot synchronous read cache (hydrated from Postgres at boot). Default: file-only.
@@ -94,8 +99,10 @@ export const kv = {
 export type User = {
   id: string;
   address: string;
-  name: string;
-  verified: boolean; // World ID checkmark (social-style badge)
+  name: string; // unique @username handle
+  displayName?: string; // free-text display name (shown alongside the @handle)
+  verified: boolean; // World ID checkmark (social-style badge) — proof of humanity
+  identityVerified?: boolean; // second World ID check (identity credential) — gates market creation
   creator?: boolean; // may create markets — granted ONLY via the admin API
   humanId?: string;
   avatar?: string;
@@ -121,7 +128,9 @@ export type Market = {
   resolved: boolean;
   outcome?: number;
   reason?: string;
-  oracle?: "chainlink" | "claude";
+  /// Which oracle produced the outcome: an on-chain Chainlink feed, a verdict from 0G Compute,
+  /// or the default model when 0G is unavailable.
+  oracle?: "chainlink" | "claude" | "0g";
   backfilled?: boolean;
   // Path-B (Gnosis CTF) extras: `address` holds the FPMM; these locate the escrow positions.
   conditionId?: string;
@@ -188,6 +197,9 @@ export type AgentRow = {
   public?: boolean;
   humanBacked: boolean;
   agentBookTx?: string;
+  /// ERC-8004 Identity Registry tokenId — set by the explicit register action, never in a loop.
+  erc8004Id?: string;
+  erc8004Tx?: string;
   createdAt: number;
   wins: number;
   losses: number;

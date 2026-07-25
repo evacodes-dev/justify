@@ -1,0 +1,21 @@
+{
+  "network": "zg-galileo",
+  "chainId": 16602,
+  "rpc": "https://evmrpc-testnet.0g.ai",
+  "explorer": "https://chainscan-galileo.0g.ai",
+  "storageExplorer": "https://storagescan-galileo.0g.ai",
+  "nativeCurrency": { "name": "0G", "symbol": "0G", "decimals": 18 },
+  "note": "Anchor chain only. Markets, collateral and settlement stay on Base Sepolia (see base-sepolia.json); this deployment records the Merkle root and TEE signer behind each AI resolution.",
+  "contracts": {
+    "JustifyAttestations": "0x9E10941b042e08C673623EE1Eb6d21E3a278A880"
+  },
+  "agent": "0xAbebD0B9a8Eaaa94d4E0Bd42A0999a64Cb13aB69",
+  "compute": {
+    "provider": "0xa48f01287233509FD694a22Bf840225062E67836",
+    "model": "qwen/qwen2.5-omni-7b",
+    "verifiability": "TeeML"
+  },
+  "storage": {
+    "indexer": "https://indexer-storage-testnet-turbo.0g.ai"
+  }
+}

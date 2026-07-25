@@ -35,11 +35,18 @@ async function authedFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return apiFetch<T>(path, { ...init, headers: { ...authHeaders(), ...(init?.headers ?? {}) } })
 }
 
+// POST /api/upload — store a resized image data URL, get back a servable URL.
+export function uploadImage(address: string, dataUrl: string) {
+  return authedFetch<{ url: string }>('/api/upload', {
+    method: 'POST', body: JSON.stringify({ address, dataUrl }),
+  })
+}
+
 // POST /api/create-market — deploys a real CTF/FPMM market (creator role required).
 export interface PriceConfig { asset: 'ETH' | 'BTC' | 'LINK'; comparator: 'above' | 'below'; threshold: number }
 export function createMarket(input: {
   question: string; description?: string; category?: string; closeTimeDays?: number;
-  closeTimeTs?: number; priceConfig?: PriceConfig; creator?: string
+  closeTimeTs?: number; priceConfig?: PriceConfig; creator?: string; image?: string
 }) {
   return apiFetch<{ address: string; question: string; id: number; explorer: string; deployTx: string }>(
     '/api/create-market',
@@ -47,9 +54,9 @@ export function createMarket(input: {
   )
 }
 
-export interface MarketComment { id: string; address: string; name: string; avatar: string; verified: boolean; text: string; ts: number }
+export interface MarketComment { id: string; address: string; name: string; displayName?: string; avatar: string; verified: boolean; text: string; ts: number }
 export interface UserPost {
-  id: string; address: string; name: string; avatar: string; verified: boolean; text: string; ts: number
+  id: string; address: string; name: string; displayName?: string; avatar: string; verified: boolean; text: string; ts: number
   likes?: number; liked?: boolean; comments?: number; recentComments?: MarketComment[]
 }
 export interface Mention extends UserPost { kind: 'post' | 'comment'; marketId?: number }
@@ -100,7 +107,7 @@ export function getMarketHistory(id: number | string, range: ChartRange = 'ALL')
 }
 
 // `creator` is an admin-granted role (World ID verify = just the checkmark).
-export interface PublicUser { name: string; address: string; bio?: string; avatar?: string; verified: boolean; creator?: boolean; followers?: number; createdAt: number }
+export interface PublicUser { name: string; displayName?: string; address: string; bio?: string; avatar?: string; verified: boolean; creator?: boolean; followers?: number; createdAt: number }
 export interface UserMarket { id: number; question: string; priceYes: number; volume: number; resolved: boolean }
 export function getUser(key: string) {
   return apiFetch<{ user: PublicUser; markets: UserMarket[] }>(`/api/user/${key}`)
@@ -108,9 +115,9 @@ export function getUser(key: string) {
 
 // profile (settings)
 export function getMe(address: string) {
-  return apiFetch<{ user: { name: string; address: string; bio?: string; avatar?: string; verified: boolean; creator?: boolean } | null }>(`/api/me?address=${address}`)
+  return apiFetch<{ user: { name: string; displayName?: string; address: string; bio?: string; avatar?: string; verified: boolean; identityVerified?: boolean; creator?: boolean } | null }>(`/api/me?address=${address}`)
 }
-export function updateProfile(input: { address: string; name?: string; bio?: string; avatar?: string }) {
+export function updateProfile(input: { address: string; name?: string; displayName?: string; bio?: string; avatar?: string }) {
   return authedFetch<{ ok: boolean; user: any }>('/api/profile', { method: 'POST', body: JSON.stringify(input) })
 }
 
@@ -215,6 +222,15 @@ export function submitProof(body: { rp_id?: string; idkitResponse: unknown; wall
   })
 }
 
+// Step two of the World ID gate: the identity check. Requires the humanity verification
+// to have passed first; both together unlock Create Market.
+export function submitIdentityProof(body: { rp_id?: string; idkitResponse: unknown; walletAddress?: string }) {
+  return apiFetch<{ success: boolean; alreadyVerified?: boolean }>('/api/verify-identity', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
 export interface Resolution {
   id: number
   verdict: 'YES' | 'NO'
@@ -222,8 +238,52 @@ export interface Resolution {
   ethPrice?: number
   tx?: string
   model?: string
-  oracle?: 'chainlink' | 'claude'
+  oracle?: 'chainlink' | 'claude' | '0g'
+  /// 0g://<merkleRoot> of the justification bundle, when the verdict published one.
+  bundleUri?: string | null
+  /// Backend route that fetches that bundle out of 0G Storage.
+  bundleUrl?: string | null
   at?: string
+}
+
+// The evidence bundle behind an AI resolution, stored on 0G Storage and addressed by the
+// Merkle root the resolution transaction points at.
+export interface JustificationBundle {
+  marketId: number
+  question: string
+  verdict: { outcome: 'YES' | 'NO' | 'INVALID'; reasoning: string }
+  graphData: {
+    endpoint: string
+    query: string
+    variables: Record<string, unknown>
+    summary: string
+    snapshot: {
+      yesPrice: number
+      volumeUSDC: number
+      liquidityUSDC: number
+      tradeCount: number
+      traderCount: number
+    }
+  } | null
+  compute: {
+    provider: string
+    model: string
+    chatId: string
+    verifiability: string
+    teeSignerAddress: string
+    teeSignerAcknowledged: boolean
+    verified: boolean | null
+    verificationNote: string
+  } | null
+  createdAt: string
+}
+
+export async function getJustification(url: string): Promise<JustificationBundle | null> {
+  try {
+    return await apiFetch<JustificationBundle>(url)
+  } catch {
+    return null
+  }
 }
 
 // GET /api/proposal/[id] — optimistic-settler proposal state for the challenge window.

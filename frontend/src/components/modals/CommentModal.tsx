@@ -94,7 +94,7 @@ export default function CommentModal() {
                     <img src={comment.avatar} className="img-fluid rounded-circle" alt="profile-img" />
                     <div className="ms-2 small">
                       <div className="bg-glass px-3 py-2 rounded-4 mb-1 chat-text text-dark">
-                        <p className="fw-500 text-white mb-0">{comment.name}</p>
+                        <p className="fw-500 text-white mb-0">@{comment.name}</p>
                         <span className="text-muted">{comment.text}</span>
                       </div>
                       <div className="d-flex align-items-center ms-2">

@@ -39,6 +39,7 @@ const enrich = (rows: { address: string }[] | PostRow[] | CommentRow[]) => {
     return {
       ...r,
       name: u?.name ?? `${r.address.slice(0, 6)}…${r.address.slice(-4)}`,
+      displayName: u?.displayName || "",
       avatar: u?.avatar || "/img/images.jpeg",
       verified: !!u?.verified,
     };
@@ -117,6 +118,7 @@ export async function socialRoutes(app: FastifyInstance) {
         return {
           id: c.id, address: c.address, text: c.text, ts: c.ts,
           name: u?.name ?? `${c.address.slice(0, 6)}…${c.address.slice(-4)}`,
+          displayName: u?.displayName || "",
           avatar: u?.avatar || "/img/images.jpeg", verified: !!u?.verified,
         };
       }),

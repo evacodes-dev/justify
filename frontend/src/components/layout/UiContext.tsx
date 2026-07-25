@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
-export type ModalName = 'post' | 'language' | 'comment' | 'trade' | 'onboard' | null
+export type ModalName = 'post' | 'language' | 'comment' | 'trade' | 'onboard' | 'signin' | null
 
 import type { ApiMarket } from '../../lib/markets'
 

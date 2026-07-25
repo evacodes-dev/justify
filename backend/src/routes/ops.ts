@@ -26,6 +26,20 @@ export async function opsRoutes(app: FastifyInstance) {
     return res;
   });
 
+  // Mint the agent's ERC-8004 identity (Ethereum mainnet, real gas) — EXPLICIT action per
+  // project rule, never called from any loop. Idempotent: re-running returns the stored id.
+  app.post<{ Params: { id: string } }>("/erc8004/register/:id", async (req, reply) => {
+    const a = db.agents.get(req.params.id);
+    if (!a) return reply.code(404).send({ error: "not found" });
+    if (a.erc8004Id) return { agentId: a.erc8004Id, tx: a.erc8004Tx, already: true };
+    const { registerAgent, erc8004Enabled, explorerToken } = await import("../erc8004.js");
+    if (!erc8004Enabled()) return reply.code(503).send({ error: "ENS_OWNER_PK not configured" });
+    const origin = process.env.PUBLIC_ORIGIN ?? "https://justify.market";
+    const r = await registerAgent(`${origin}/api/agent-card/${a.address}`);
+    db.agents.patch(a.id, { erc8004Id: r.agentId, erc8004Tx: r.tx });
+    return { agentId: r.agentId, tx: r.tx, chainId: r.chainId, token: explorerToken(r.agentId) };
+  });
+
   // pending approvals (human-in-the-loop)
   app.get<{ Querystring: { ownerAddress?: string } }>("/approvals", async (req) => {
     const owner = String(req.query.ownerAddress ?? "").toLowerCase();

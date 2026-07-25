@@ -22,6 +22,8 @@ export function useWallet() {
       .catch(() => {}) // network not enabled in Dynamic dashboard — writes will surface it
   }, [primaryWallet])
 
+  // Logged-out users never reach the app (hard gate in App.tsx renders the sign-in screen
+  // instead), so this rarely fires — but keep it launching Dynamic for any edge case.
   const promptLogin = useCallback(() => setShowAuthFlow(true), [setShowAuthFlow])
 
   const getChainWalletClient = useCallback(async () => {

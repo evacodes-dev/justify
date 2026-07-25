@@ -1,0 +1,53 @@
+[
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "marketId", "type": "uint256" },
+      { "indexed": false, "internalType": "uint8", "name": "outcome", "type": "uint8" },
+      { "indexed": true, "internalType": "address", "name": "proposer", "type": "address" },
+      { "indexed": false, "internalType": "string", "name": "reason", "type": "string" }
+    ],
+    "name": "Proposed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "marketId", "type": "uint256" },
+      { "indexed": false, "internalType": "uint8", "name": "counterOutcome", "type": "uint8" },
+      { "indexed": true, "internalType": "address", "name": "challenger", "type": "address" },
+      { "indexed": false, "internalType": "bytes32", "name": "assertionId", "type": "bytes32" },
+      { "indexed": false, "internalType": "uint256", "name": "bond", "type": "uint256" }
+    ],
+    "name": "Challenged",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "marketId", "type": "uint256" },
+      { "indexed": false, "internalType": "uint8", "name": "outcome", "type": "uint8" },
+      { "indexed": false, "internalType": "bool", "name": "viaChallenge", "type": "bool" }
+    ],
+    "name": "Finalized",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "marketId", "type": "uint256" },
+      { "indexed": false, "internalType": "bytes32", "name": "assertionId", "type": "bytes32" }
+    ],
+    "name": "ChallengeDisputed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "marketId", "type": "uint256" },
+      { "indexed": false, "internalType": "uint8", "name": "outcome", "type": "uint8" }
+    ],
+    "name": "ResolveFailed",
+    "type": "event"
+  }
+]

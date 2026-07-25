@@ -3,38 +3,38 @@ import { Link } from 'react-router-dom'
 import UserPostCard from '../feed/UserPostCard'
 import MarketCard from '../market/MarketCard'
 import EmptyState from '../common/EmptyState'
-import { getPosts, getLikedMarketIds, getMentions, type UserPost, type Mention } from '../../lib/api'
+import { getPosts, getMentions, type UserPost, type Mention } from '../../lib/api'
 import { useMarkets } from '../../hooks/useMarkets'
 import { useWallet } from '../../hooks/useWallet'
 import { toUiMarket } from '../../lib/markets'
 import { timeAgo } from '../../lib/time'
 import MentionText from '../common/MentionText'
 
-type Tab = 'vogel' | 'liked' | 'mentions'
+type Tab = 'posts' | 'market' | 'mentions'
 
-// Profile content tabs: Vogel (the user's text posts), Liked (markets they liked),
+// Profile content tabs: Posts (the user's text posts), Market (markets they created),
 // Mentions (@name in posts and comments).
 export default function ProfileTabs({ name, address }: { name: string; address?: string }) {
-  const [tab, setTab] = useState<Tab>('vogel')
+  const [tab, setTab] = useState<Tab>('posts')
   const [posts, setPosts] = useState<UserPost[] | null>(null)
-  const [likedIds, setLikedIds] = useState<number[] | null>(null)
   const [mentions, setMentions] = useState<Mention[] | null>(null)
-  const { markets } = useMarkets()
+  const { markets, loading: marketsLoading } = useMarkets()
   const { address: viewer } = useWallet()
 
   useEffect(() => {
-    setPosts(null); setLikedIds(null); setMentions(null)
+    setPosts(null); setMentions(null)
     getPosts(name, 30, viewer ?? undefined).then((b) => setPosts(b.posts)).catch(() => setPosts([]))
-    if (address) getLikedMarketIds(address).then((b) => setLikedIds(b.marketIds)).catch(() => setLikedIds([]))
     getMentions(name).then((b) => setMentions(b.mentions)).catch(() => setMentions([]))
   }, [name, address, viewer])
 
-  const likedRows = markets.filter((m) => (likedIds ?? []).includes(m.demo.id))
+  // markets this user created (creatorName is the real submitter; api.creator is the
+  // on-chain signer, which is the backend in platform-funded mode — so match by name)
+  const createdRows = markets.filter((m) => (m.api.creatorName ?? '').toLowerCase() === name.toLowerCase())
   const spinner = <div className="text-center py-4"><div className="spinner-border" role="status" /></div>
 
   const tabsDef: { id: Tab; label: string }[] = [
-    { id: 'vogel', label: `Vogel${posts ? ` (${posts.length})` : ''}` },
-    { id: 'liked', label: 'Liked' },
+    { id: 'posts', label: `Posts${posts ? ` (${posts.length})` : ''}` },
+    { id: 'market', label: `Market${createdRows.length ? ` (${createdRows.length})` : ''}` },
     { id: 'mentions', label: 'Mentions' },
   ]
 
@@ -53,7 +53,7 @@ export default function ProfileTabs({ name, address }: { name: string; address?:
         ))}
       </ul>
 
-      {tab === 'vogel' && (
+      {tab === 'posts' && (
         posts === null ? spinner : posts.length ? (
           <div>{posts.map((p) => <UserPostCard key={p.id} post={p} />)}</div>
         ) : (
@@ -61,15 +61,15 @@ export default function ProfileTabs({ name, address }: { name: string; address?:
         )
       )}
 
-      {tab === 'liked' && (
-        likedIds === null ? spinner : likedRows.length ? (
+      {tab === 'market' && (
+        marketsLoading && !createdRows.length ? spinner : createdRows.length ? (
           <div className="feeds px-lg-3">
-            {likedRows.map((m) => (
+            {createdRows.map((m) => (
               <MarketCard key={m.demo.id} market={toUiMarket(m.demo, { yesPct: Math.round(m.api.priceYes * 100), total: m.api.volume, resolved: m.api.resolved, likes: m.api.likes, outcome: m.api.outcome, closeTime: m.api.closeTime })} />
             ))}
           </div>
         ) : (
-          <EmptyState icon="favorite_border" title="No liked markets" hint="Tap the heart on a market to save it here." />
+          <EmptyState icon="candlestick_chart" title="No markets yet" hint={`Markets created by @${name} will appear here.`} />
         )
       )}
 

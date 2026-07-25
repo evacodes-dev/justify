@@ -65,3 +65,8 @@ backend/data-arc-backup*/
 # local secrets bundle — never commit
 justify-local-not-in-git.zip
 *.zip
+
+# session scratch / generated
+ssh-scratch/
+subgraph/generated/
+subgraph/build/

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import VerifiedBadge from '../common/VerifiedBadge'
 import FollowButton from '../common/FollowButton'
+import { useUi } from '../layout/UiContext'
 import type { PublicUser, UserMarket } from '../../lib/api'
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
@@ -9,6 +10,7 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 // Real profile header (connected user or any creator). Markets = the markets they created.
 export default function ProfileHeader({ user, markets, isMe }: { user: PublicUser; markets: UserMarket[]; isMe?: boolean }) {
   const joined = new Date(user.createdAt || Date.now()).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+  const { openModal } = useUi()
   const [followers, setFollowers] = useState(user.followers ?? 0)
   useEffect(() => { setFollowers(user.followers ?? 0) }, [user.followers])
   return (
@@ -17,13 +19,22 @@ export default function ProfileHeader({ user, markets, isMe }: { user: PublicUse
         <div className="d-flex align-items-center px-3 pt-3">
           <img src={user.avatar || '/img/images.jpeg'} className="img-fluid rounded-circle" alt="avatar" style={{ width: 64, height: 64, objectFit: 'cover' }} />
           <div className="ms-3">
-            <h6 className="mb-0 d-flex align-items-center text-body fs-6 fw-bold">{user.name}{user.verified && <VerifiedBadge />}</h6>
-            <p className="text-muted mb-0">@{user.name}</p>
+            <h6 className="mb-0 d-flex align-items-center text-body fs-6 fw-bold">@{user.name}{user.verified && <VerifiedBadge />}</h6>
+            {user.displayName && <p className="text-muted mb-0">{user.displayName}</p>}
           </div>
-          <div className="ms-auto">
-            {isMe
-              ? <Link to="/edit-profile" className="btn btn-outline-secondary btn-sm rounded-4">Edit</Link>
-              : <FollowButton target={user.name || user.address} onToggled={(_, n) => setFollowers(n)} />}
+          <div className="ms-auto d-flex gap-2">
+            {isMe ? (
+              <>
+                {!user.verified && (
+                  <button className="btn btn-primary btn-sm rounded-4 fw-bold" onClick={() => openModal('onboard')}>
+                    Get verified
+                  </button>
+                )}
+                <Link to="/edit-profile" className="btn btn-outline-secondary btn-sm rounded-4">Edit</Link>
+              </>
+            ) : (
+              <FollowButton target={user.name || user.address} onToggled={(_, n) => setFollowers(n)} />
+            )}
           </div>
         </div>
         <div className="p-3">

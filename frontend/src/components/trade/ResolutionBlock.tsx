@@ -6,6 +6,7 @@ import { getProposal, getResolution, type ProposalState, type Resolution } from 
 import { useWallet } from '../../hooks/useWallet'
 import { useToast } from '../common/Toast'
 import ChainlinkBadge from '../market/ChainlinkBadge'
+import VerifiableAiBadge, { stripBundleUri } from './VerifiableAiBadge'
 
 const OUTCOME_LABEL: Record<number, string> = { 0: 'NO', 1: 'YES', 2: 'INVALID' }
 const outcomeBadge = (o: number | null | undefined) =>
@@ -106,8 +107,10 @@ export default function ResolutionBlock({ market }: { market: ApiMarket }) {
           {status === 'proposed' && proposal && (
             <>
               {proposal.reason && (
-                <p className="text-muted small mb-2" style={{ whiteSpace: 'pre-wrap' }}>{proposal.reason}</p>
+                <p className="text-muted small mb-2" style={{ whiteSpace: 'pre-wrap' }}>{stripBundleUri(proposal.reason)}</p>
               )}
+              {/* Evidence belongs here, while the outcome can still be disputed. */}
+              <VerifiableAiBadge reason={proposal.reason} />
               <div className="d-flex align-items-center gap-2 small mb-2">
                 <span className="material-icons md-18 text-warning">hourglass_top</span>
                 <span className="text-body">
@@ -220,6 +223,8 @@ export default function ResolutionBlock({ market }: { market: ApiMarket }) {
           <h6 className="fw-bold text-body mb-0 flex-grow-1">Resolution</h6>
           {resolution?.oracle === 'chainlink' ? (
             <span className="badge" style={{ background: '#375bd2' }}>Chainlink Data Feed</span>
+          ) : resolution?.oracle === '0g' ? (
+            <span className="badge" style={{ background: '#111827' }}>AI oracle (0G Compute)</span>
           ) : resolution?.oracle === 'claude' ? (
             <span className="badge bg-secondary">AI oracle (Claude)</span>
           ) : null}
@@ -233,6 +238,7 @@ export default function ResolutionBlock({ market }: { market: ApiMarket }) {
           <p className="text-muted small mb-2">Outcome settled on-chain.</p>
         )}
         {resolution?.oracle === 'chainlink' && <div className="mb-2"><ChainlinkBadge question={market.question} /></div>}
+        {resolution !== null && <VerifiableAiBadge reason={resolution.rationale} />}
         <div className="d-flex align-items-center justify-content-between small">
           {resolution?.tx ? (
             <a href={txUrl(resolution.tx)} target="_blank" rel="noreferrer" className="text-primary text-decoration-none">

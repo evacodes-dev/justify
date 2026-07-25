@@ -1,0 +1,12 @@
+[nest]
+name = "nuthatch-justify"
+chain = "base"  # base-sepolia via custom RPC + chain_id below
+chain_id = 84532
+rpc_urls = ["https://sepolia.base.org"]
+schema_version = 1
+
+[[contracts]]
+alias = "registry"
+address = "0x90c69edcb18f238594c974ea2a60067534622236"
+start_block = 44597900
+abi = "abis/registry.json"

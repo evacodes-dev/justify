@@ -2,25 +2,15 @@ import { config, MODELS } from "./config.js";
 import { backendSigner, publicClient, arc } from "./chain.js";
 import { resolverAbi, aggregatorDecimalsAbi, settlerAbi, registryAbi } from "./abis.js";
 import { db } from "./store.js";
-import { getRelevantData } from "./market-intel.js";
 import { claudeJson } from "./llm.js";
 import { hasFeed, readChainlinkPrice } from "./chainlink.js";
+import { resolveWithJustification } from "./justification.js";
 
 // Hybrid resolver:
 //   price markets  → Chainlink Data Feed (deterministic, trustless)
 //   everything else → Claude Sonnet (subjective/event judgement)
 // A Claude (Haiku) classifier routes each question: it decides whether the market is a
 // simple crypto-price comparison (Chainlink's job) or needs subjective judgement.
-
-const SCHEMA = {
-  type: "object",
-  properties: {
-    outcome: { type: "string", enum: ["YES", "NO", "INVALID"] },
-    reasoning: { type: "string" },
-  },
-  required: ["outcome", "reasoning"],
-  additionalProperties: false,
-};
 
 const CLASSIFY_SCHEMA = {
   type: "object",
@@ -117,7 +107,7 @@ export async function resolveMarket(marketId: number) {
 
   let outcome: "YES" | "NO" | "INVALID" | undefined;
   let reasoning = "";
-  let oracle: "chainlink" | "claude" = "claude";
+  let oracle: "chainlink" | "claude" | "0g" = "claude";
 
   // 1) route. Structured price markets (creator picked asset/comparator/threshold in the
   // form) skip the LLM classifier entirely — fully deterministic routing.
@@ -157,12 +147,14 @@ export async function resolveMarket(marketId: number) {
   // outcome (public challenge window; UMA decides disputes) — it never finalizes directly.
   if (!outcome && config.settler) return advanceOptimistic(marketId, m.question, m.metadataURI);
 
-  // 2b) subjective verdict via Claude (legacy direct path when no settler configured)
+  // 2b) subjective verdict (legacy direct path when no settler configured) — still publishes
+  // its justification bundle; without a challenge window the evidence trail matters more, not
+  // less, since nobody gets to dispute the verdict before it pays out.
   if (!outcome) {
-    const verdict = await subjectiveVerdict(m.question, m.metadataURI);
-    outcome = verdict.outcome;
-    reasoning = verdict.reasoning;
-    oracle = "claude";
+    const j = await subjectiveVerdict(marketId, m.question, m.metadataURI);
+    outcome = j.verdict.outcome;
+    reasoning = j.reason;
+    oracle = j.oracle;
   }
 
   const outcomeNum = outcome === "YES" ? 1 : outcome === "NO" ? 0 : 2;
@@ -174,15 +166,12 @@ export async function resolveMarket(marketId: number) {
   return { marketId, outcome, reasoning, tx, oracle };
 }
 
-async function subjectiveVerdict(question: string, metadataURI: string) {
-  const data = await getRelevantData(question, metadataURI);
-  return claudeJson<{ outcome: "YES" | "NO" | "INVALID"; reasoning: string }>({
-    model: MODELS.resolution,
-    maxTokens: 500,
-    system: "You are an impartial prediction-market resolver. Decide YES, NO, or INVALID for the question using ONLY the data provided for THIS market's topic. Be decisive; cite the number/fact. 2-3 sentence reason.",
-    user: `Market: "${question}"\nTopic data: ${data.map((d) => `${d.label}=${d.value}`).join("; ")}\nResolve now.`,
-    schema: SCHEMA,
-  });
+// Subjective verdicts go through the justification pipeline: the agent reasons over the live
+// indexed market record from the subgraph, the verdict is produced on 0G Compute, and the whole
+// evidence bundle lands in 0G Storage with only its root travelling on-chain. See
+// justification.ts — it degrades to the default model and a plain reason string if 0G is off.
+async function subjectiveVerdict(marketId: number, question: string, metadataURI: string) {
+  return resolveWithJustification(marketId, question, metadataURI);
 }
 
 // State machine for the optimistic path — idempotent, driven by the resolve cron:
@@ -200,14 +189,24 @@ async function advanceOptimistic(marketId: number, question: string, metadataURI
   const status = Number(p[2]); // 0 none, 1 proposed, 2 challenged, 3 settled
 
   if (status === 0) {
-    const verdict = await subjectiveVerdict(question, metadataURI);
-    const outcomeNum = verdict.outcome === "YES" ? 1 : verdict.outcome === "NO" ? 0 : 2;
+    const j = await subjectiveVerdict(marketId, question, metadataURI);
+    const outcomeNum = j.verdict.outcome === "YES" ? 1 : j.verdict.outcome === "NO" ? 0 : 2;
     const tx = await backendSigner().run(({ wallet, account }) =>
-      wallet.writeContract({ address: settler, abi: settlerAbi, functionName: "propose", args: [BigInt(marketId), outcomeNum, verdict.reasoning], account, chain: arc }),
+      wallet.writeContract({ address: settler, abi: settlerAbi, functionName: "propose", args: [BigInt(marketId), outcomeNum, j.reason], account, chain: arc }),
     );
     await publicClient.waitForTransactionReceipt({ hash: tx as `0x${string}` });
-    db.markets.patch(marketId, { oracle: "claude" });
-    return { marketId, status: "proposed", outcome: verdict.outcome, reasoning: verdict.reasoning, tx, oracle: "claude" as const };
+    db.markets.patch(marketId, { oracle: j.oracle });
+    return {
+      marketId,
+      status: "proposed",
+      outcome: j.verdict.outcome,
+      reasoning: j.verdict.reasoning,
+      tx,
+      oracle: j.oracle,
+      bundleUri: j.bundleUri,
+      anchorTx: j.anchorTx,
+      tee: j.tee,
+    };
   }
   if (status === 1) {
     const ready = (await publicClient.readContract({ address: settler, abi: settlerAbi, functionName: "canFinalize", args: [BigInt(marketId)] })) as boolean;

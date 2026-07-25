@@ -1,0 +1,44 @@
+[
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "id", "type": "uint256" },
+      { "indexed": false, "internalType": "address", "name": "fpmm", "type": "address" },
+      { "indexed": false, "internalType": "bytes32", "name": "conditionId", "type": "bytes32" },
+      { "indexed": true, "internalType": "address", "name": "creator", "type": "address" },
+      { "indexed": false, "internalType": "string", "name": "question", "type": "string" },
+      { "indexed": false, "internalType": "uint64", "name": "closeTime", "type": "uint64" }
+    ],
+    "name": "MarketCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [{ "indexed": true, "internalType": "address", "name": "user", "type": "address" }],
+    "name": "CreatorRegistered",
+    "type": "event"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "name": "markets",
+    "outputs": [
+      { "internalType": "address", "name": "fpmm", "type": "address" },
+      { "internalType": "bytes32", "name": "conditionId", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "questionId", "type": "bytes32" },
+      { "internalType": "address", "name": "creator", "type": "address" },
+      { "internalType": "address", "name": "collateral", "type": "address" },
+      { "internalType": "uint64", "name": "closeTime", "type": "uint64" },
+      { "internalType": "string", "name": "question", "type": "string" },
+      { "internalType": "string", "name": "metadataURI", "type": "string" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "ctf",
+    "outputs": [{ "internalType": "contract ICtf", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

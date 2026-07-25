@@ -1,0 +1,191 @@
+# Justify — AI-resolved prediction markets on the Gnosis CTF/FPMM stack.
+#
+# Derived state computed in the mappings (not available from any single event):
+#   • yesPrice   — pool-ratio price, tracked incrementally from buy/sell/funding deltas
+#   • Position   — per-outcome cost basis and realized PnL (average-cost accounting)
+#   • Trader     — cross-market volume/PnL leaderboard
+#   • PricePoint — the chart series the app renders
+#   • Resolution — the AI proposal → challenge → settlement lifecycle in one place
+
+enum MarketStatus {
+  OPEN
+  CLOSED
+  PROPOSED
+  CHALLENGED
+  RESOLVED
+}
+
+enum Outcome {
+  NO
+  YES
+  INVALID
+}
+
+enum ResolutionKind {
+  OPTIMISTIC_AI
+  OPTIMISTIC_CHALLENGE
+  PRICE_FEED
+  DIRECT
+}
+
+type Market @entity(immutable: false) {
+  id: ID! # marketId
+  marketId: BigInt!
+  fpmm: Bytes!
+  conditionId: Bytes!
+  questionId: Bytes!
+  ctf: Bytes!
+  collateral: Bytes!
+  creator: Creator!
+  question: String!
+  "Inline JSON today; becomes a 0g://<merkleRoot> pointer once metadata moves to 0G Storage."
+  metadataURI: String!
+  closeTime: BigInt!
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+  createdTx: Bytes!
+
+  "ERC-1155 position ids held by the FPMM — index set 1 = NO, 2 = YES."
+  posNo: BigInt!
+  posYes: BigInt!
+  "Pooled outcome-token balances, tracked incrementally from trade/funding events."
+  poolNo: BigInt!
+  poolYes: BigInt!
+
+  status: MarketStatus!
+  "priceYes = poolNo / (poolNo + poolYes) — scarcer YES in the pool means pricier YES."
+  yesPrice: BigDecimal!
+  volumeUSDC: BigDecimal!
+  liquidityUSDC: BigDecimal!
+  tradeCount: Int!
+  traderCount: Int!
+
+  outcome: Outcome
+  resolvedAt: BigInt
+  resolutionKind: ResolutionKind
+  "Proposer evidence. Becomes a 0g://<merkleRoot> pointer to the TEE-verified justification bundle."
+  resolutionReason: String
+  resolutionTx: Bytes
+
+  resolution: Resolution
+  trades: [Trade!]! @derivedFrom(field: "market")
+  positions: [Position!]! @derivedFrom(field: "market")
+  pricePoints: [PricePoint!]! @derivedFrom(field: "market")
+}
+
+type Trade @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  market: Market!
+  trader: Trader!
+  isBuy: Boolean!
+  outcome: Outcome!
+  "Collateral in (buy) or out (sell), fee included."
+  amountUSDC: BigDecimal!
+  feeUSDC: BigDecimal!
+  shares: BigDecimal!
+  "Effective price paid per share for this fill."
+  price: BigDecimal!
+  "Market YES price after the trade landed."
+  yesPriceAfter: BigDecimal!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+type PricePoint @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  market: Market!
+  yesPrice: BigDecimal!
+  poolNo: BigInt!
+  poolYes: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+}
+
+type Position @entity(immutable: false) {
+  id: ID! # marketId-trader
+  market: Market!
+  trader: Trader!
+  yesShares: BigDecimal!
+  noShares: BigDecimal!
+  "Average-cost basis of the shares still held, per outcome."
+  yesCostUSDC: BigDecimal!
+  noCostUSDC: BigDecimal!
+  "Locked in on sells (proceeds − cost removed) and on redemption."
+  realizedPnlUSDC: BigDecimal!
+  redeemedUSDC: BigDecimal!
+  tradeCount: Int!
+  firstTradeAt: BigInt!
+  lastTradeAt: BigInt!
+}
+
+type Trader @entity(immutable: false) {
+  id: ID! # address
+  address: Bytes!
+  volumeUSDC: BigDecimal!
+  realizedPnlUSDC: BigDecimal!
+  redeemedUSDC: BigDecimal!
+  tradeCount: Int!
+  marketsTraded: Int!
+  firstSeenAt: BigInt!
+  lastSeenAt: BigInt!
+  positions: [Position!]! @derivedFrom(field: "trader")
+  trades: [Trade!]! @derivedFrom(field: "trader")
+}
+
+type Creator @entity(immutable: false) {
+  id: ID! # address
+  address: Bytes!
+  registeredAt: BigInt
+  marketCount: Int!
+  volumeUSDC: BigDecimal!
+  markets: [Market!]! @derivedFrom(field: "creator")
+}
+
+"The AI proposal → public challenge → settlement lifecycle for one market."
+type Resolution @entity(immutable: false) {
+  id: ID! # marketId
+  market: Market!
+  proposedOutcome: Outcome!
+  proposer: Bytes!
+  "Proposer evidence — a 0g://<merkleRoot> pointer once justification bundles move to 0G Storage."
+  reason: String!
+  proposedAt: BigInt!
+  proposedTx: Bytes!
+
+  challenged: Boolean!
+  challenger: Bytes
+  counterOutcome: Outcome
+  assertionId: Bytes
+  bond: BigDecimal
+  challengedAt: BigInt
+  "UMA DVM vote underway on the escalated challenge."
+  disputed: Boolean!
+
+  finalized: Boolean!
+  finalOutcome: Outcome
+  viaChallenge: Boolean
+  finalizedAt: BigInt
+  finalizedTx: Bytes
+  "Emitted when the settler could not push the verdict through to the resolver."
+  resolveFailed: Boolean!
+}
+
+"Reverse index: the audited CTF emits conditionId, not our marketId — this maps back in O(1)."
+type ConditionRef @entity(immutable: true) {
+  id: ID! # conditionId
+  market: Market!
+}
+
+type Global @entity(immutable: false) {
+  id: ID! # "global"
+  marketCount: Int!
+  resolvedMarketCount: Int!
+  tradeCount: Int!
+  traderCount: Int!
+  creatorCount: Int!
+  volumeUSDC: BigDecimal!
+  liquidityUSDC: BigDecimal!
+  aiProposalCount: Int!
+  challengeCount: Int!
+}

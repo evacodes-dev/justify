@@ -35,9 +35,10 @@ export const ctfAbi = parseAbi([
   "event ConditionResolution(bytes32 indexed conditionId, address indexed oracle, bytes32 indexed questionId, uint256 outcomeSlotCount, uint256[] payoutNumerators)",
 ]);
 
-// Audited Gnosis FixedProductMarketMaker — trade events + quotes.
+// Audited Gnosis FixedProductMarketMaker — trades + quotes + events.
 export const fpmmAbi = parseAbi([
   "function calcBuyAmount(uint256 investmentAmount, uint256 outcomeIndex) external view returns (uint256)",
+  "function buy(uint256 investmentAmount, uint256 outcomeIndex, uint256 minOutcomeTokensToBuy) external",
   "event FPMMBuy(address indexed buyer, uint256 investmentAmount, uint256 feeAmount, uint256 indexed outcomeIndex, uint256 outcomeTokensBought)",
   "event FPMMSell(address indexed seller, uint256 returnAmount, uint256 feeAmount, uint256 indexed outcomeIndex, uint256 outcomeTokensSold)",
 ]);

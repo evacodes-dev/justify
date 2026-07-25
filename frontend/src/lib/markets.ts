@@ -87,7 +87,7 @@ export function toUiMarket(
 export type ApiMarket = {
   id: number; address: `0x${string}`; question: string; metadataURI: string;
   priceYes: number; volume: number; resolved: boolean; outcome?: number; closeTime: number;
-  creator: string; creatorName?: string; creatorVerified?: boolean; creatorAvatar?: string | null;
+  creator: string; creatorName?: string; creatorDisplayName?: string | null; creatorVerified?: boolean; creatorAvatar?: string | null;
   createdAt?: number; likes: number; comments?: number;
   recentComments?: { id: string; address: string; name: string; avatar: string; verified: boolean; text: string; ts: number }[];
   // Gnosis CTF fields (null on legacy rows): ERC-1155 position ids are decimal strings.
@@ -108,11 +108,15 @@ function derive(question: string, category: string): Pick<DemoMarket, 'emoji' | 
 
 export function apiMarketToDemo(m: ApiMarket): DemoMarket {
   let category = 'general'
+  let image = ''
   try {
     const meta = JSON.parse(m.metadataURI || '{}')
     category = meta.category || 'general'
+    image = typeof meta.image === 'string' ? meta.image : ''
   } catch { /* legacy uri */ }
-  return { id: m.id, address: m.address, question: m.question, author: m.creatorName || 'justify', category, ...derive(m.question, category) }
+  const d = { id: m.id, address: m.address, question: m.question, author: m.creatorName || 'justify', category, ...derive(m.question, category) }
+  // a creator-uploaded picture overrides the keyword-derived stock thumbnail
+  return image ? { ...d, thumb: image } : d
 }
 
 export async function fetchMarkets(): Promise<{ demo: DemoMarket; api: ApiMarket }[]> {

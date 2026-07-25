@@ -67,11 +67,11 @@ export default function UserPostCard({ post }: { post: UserPost }) {
           </Link>
           <div className="ms-2 flex-grow-1" style={{ minWidth: 0 }}>
             <Link to={`/${post.name}`} className="text-decoration-none d-flex align-items-center">
-              <span className="fw-bold text-body">{post.name}</span>
+              <span className="fw-bold text-body">@{post.name}</span>
               {post.verified && (
                 <span className="ms-1 material-icons bg-primary p-0 md-14 fw-bold text-white rounded-circle ov-icon">done</span>
               )}
-              <small className="text-muted ms-2">@{post.name}</small>
+              {post.displayName && <small className="text-muted ms-2">{post.displayName}</small>}
             </Link>
           </div>
           <small className="text-muted">{timeAgo(post.ts)}</small>

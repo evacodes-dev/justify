@@ -13,5 +13,11 @@ evm_version = "paris"
 # read access to the vendored audited Gnosis artifacts (built separately: cd vendor && forge build)
 fs_permissions = [{ access = "read", path = "./vendor" }]
 
+[rpc_endpoints]
+base-sepolia = "https://sepolia.base.org"
+# 0G Galileo testnet (chain id 16602) — hosts JustifyAttestations, the anchor for
+# TEE-verified AI resolutions.
+zg-galileo = "https://evmrpc-testnet.0g.ai"
+
 [fmt]
 line_length = 110

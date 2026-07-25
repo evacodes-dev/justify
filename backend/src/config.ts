@@ -109,6 +109,44 @@ export const config = {
   approvalThresholdUsdc: Number(process.env.APPROVAL_THRESHOLD_USDC ?? 5),
   maxAgentsPerHuman: Number(process.env.MAX_AGENTS_PER_HUMAN ?? 3),
   freeTrialBets: Number(process.env.FREE_TRIAL_BETS_PER_HUMAN ?? 10),
+
+  // 0G — verifiable inference (Compute, TEE-signed responses) + content-addressed storage
+  // for the justification bundles that back every AI resolution.
+  // Defaults target 0G mainnet: the Galileo testnet serves a single 7B text model, while
+  // mainnet carries the frontier TeeML providers a resolution verdict deserves. Point the
+  // ZG_* vars at the testnet endpoints to run against Galileo instead.
+  zg: {
+    enabled: (process.env.FEATURE_ZG ?? "off") !== "off",
+    pk: (process.env.ZG_AGENT_PK ?? "") as `0x${string}`,
+    rpc: process.env.ZG_RPC ?? "https://evmrpc.0g.ai",
+    chainId: Number(process.env.ZG_CHAIN_ID ?? 16661),
+    indexer: process.env.ZG_INDEXER ?? "https://indexer-storage-turbo.0g.ai",
+    // TeeML provider serving the verdict model. `listServiceWithDetail()` lists live ones.
+    // Default: deepseek-v4-pro. Fast alternative: glm-5.2 on
+    // 0x7DCFe6AEa70350C2090041524c9B4A9262DCe87D.
+    provider: process.env.ZG_PROVIDER ?? "0xB01EBd79c3fd63ff52fD47C3935119601EEe2FdB",
+    // The LedgerManager contract enforces a 3 0G minimum to open an account.
+    ledgerTopup: Number(process.env.ZG_LEDGER_TOPUP ?? 3),
+    attestations: (process.env.ZG_ATTESTATIONS || undefined) as `0x${string}` | undefined,
+    explorer: process.env.ZG_EXPLORER ?? "https://chainscan.0g.ai",
+    storageExplorer: process.env.ZG_STORAGE_EXPLORER ?? "https://storagescan.0g.ai",
+  },
+
+  // The Graph — the subgraph is the load-bearing read path for market data and the context
+  // the resolution agent reasons over.
+  subgraphUrl: process.env.SUBGRAPH_URL ?? "",
+
+  // x402 — pay-per-query monetization of the reputation endpoint. Settles USDC on Base
+  // Sepolia through the open facilitator; payTo defaults to the backend signer's address
+  // when unset. X402_ENABLED=off serves the endpoint for free (local dev).
+  x402: {
+    enabled: (process.env.X402_ENABLED ?? "on") !== "off",
+    payTo: (process.env.X402_PAY_TO ?? "") as `0x${string}`,
+    price: process.env.X402_PRICE ?? "$0.005",
+    // CAIP-2 id; eip155:84532 = Base Sepolia.
+    network: process.env.X402_NETWORK ?? "eip155:84532",
+    facilitator: process.env.X402_FACILITATOR ?? "https://x402.org/facilitator",
+  },
 };
 
 export const MODELS = { agent: "claude-haiku-4-5", resolution: "claude-sonnet-4-6" } as const;

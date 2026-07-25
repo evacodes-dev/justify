@@ -10,11 +10,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@0gfoundation/0g-compute-ts-sdk": "^0.9.0",
+    "@0gfoundation/0g-storage-ts-sdk": "^1.2.10",
     "@anthropic-ai/sdk": "^0.67.0",
     "@fastify/cors": "^10.0.1",
     "@fastify/rate-limit": "^11.1.0",
     "@types/pg": "^8.20.0",
     "@worldcoin/idkit-core": "^4.1.8",
+    "@x402/evm": "^2.19.0",
+    "@x402/fastify": "^2.19.0",
+    "@x402/fetch": "^2.19.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.1.0",
     "jose": "^6.2.3",
